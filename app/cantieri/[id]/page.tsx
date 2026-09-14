@@ -17,6 +17,8 @@ const RUOLI = [
 type Membro = {
   id: string;
   ruolo: string;
+  nome_impresa: string | null;
+  attivita: string | null;
   profili: { email: string } | null;
 };
 
@@ -28,6 +30,8 @@ export default function CantiereDettaglioPage() {
   const [membri, setMembri] = useState<Membro[]>([]);
   const [emailNuovo, setEmailNuovo] = useState("");
   const [ruoloNuovo, setRuoloNuovo] = useState("lavoratore");
+  const [nomeImpresaNuovo, setNomeImpresaNuovo] = useState("");
+  const [attivitaNuovo, setAttivitaNuovo] = useState("");
   const [errore, setErrore] = useState<string | null>(null);
   const [messaggio, setMessaggio] = useState<string | null>(null);
 
@@ -41,7 +45,7 @@ export default function CantiereDettaglioPage() {
 
     const { data: m, error: mErr } = await supabase
       .from("cantiere_membri")
-      .select("id, ruolo, profili!cantiere_membri_profilo_id_fkey(email)")
+      .select("id, ruolo, nome_impresa, attivita, profili!cantiere_membri_profilo_id_fkey(email)")
       .eq("cantiere_id", cantiereId);
 
     if (mErr) console.error("Errore caricamento membri:", mErr);
@@ -57,30 +61,40 @@ export default function CantiereDettaglioPage() {
     setErrore(null);
     setMessaggio(null);
 
-    const { data: sessione } = await supabase.auth.getSession();
-    const token = sessione?.session?.access_token;
+    // Cerca se esiste già un profilo con questa email
+    const { data: profiloEsistente } = await supabase
+      .from("profili")
+      .select("id")
+      .eq("email", emailNuovo)
+      .maybeSingle();
 
-    const risposta = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/invita-utente`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ email: emailNuovo, cantiereId, ruolo: ruoloNuovo }),
-      }
-    );
-
-    const risultato = await risposta.json();
-
-    if (!risposta.ok) {
-      setErrore(risultato.error ?? "Errore durante l'invito");
+    if (!profiloEsistente) {
+      setErrore(
+        "Questa persona non ha ancora un account GENESIVOX. Creala prima da Supabase (Authentication → Add user), poi riprova qui."
+      );
       return;
     }
 
-    setMessaggio("Persona invitata: riceverà un'email per accedere al cantiere.");
+    const { error } = await supabase.from("cantiere_membri").upsert(
+      {
+        cantiere_id: cantiereId,
+        profilo_id: profiloEsistente.id,
+        ruolo: ruoloNuovo,
+        nome_impresa: nomeImpresaNuovo || null,
+        attivita: attivitaNuovo || null,
+      },
+      { onConflict: "cantiere_id,profilo_id" }
+    );
+
+    if (error) {
+      setErrore(error.message);
+      return;
+    }
+
+    setMessaggio("Persona aggiunta al cantiere.");
     setEmailNuovo("");
+    setNomeImpresaNuovo("");
+    setAttivitaNuovo("");
     carica();
   }
 
@@ -97,6 +111,8 @@ export default function CantiereDettaglioPage() {
           <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
             <th style={{ padding: 8 }}>Email</th>
             <th style={{ padding: 8 }}>Ruolo</th>
+            <th style={{ padding: 8 }}>Impresa</th>
+            <th style={{ padding: 8 }}>Attività</th>
           </tr>
         </thead>
         <tbody>
@@ -106,6 +122,8 @@ export default function CantiereDettaglioPage() {
               <td style={{ padding: 8 }}>
                 {RUOLI.find((r) => r.value === m.ruolo)?.label ?? m.ruolo}
               </td>
+              <td style={{ padding: 8 }}>{m.nome_impresa ?? "—"}</td>
+              <td style={{ padding: 8 }}>{m.attivita ?? "—"}</td>
             </tr>
           ))}
         </tbody>
@@ -135,6 +153,22 @@ export default function CantiereDettaglioPage() {
               </option>
             ))}
           </select>
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <input
+            placeholder="Nome impresa"
+            value={nomeImpresaNuovo}
+            onChange={(e) => setNomeImpresaNuovo(e.target.value)}
+            style={{ width: "100%", padding: 8 }}
+          />
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <input
+            placeholder="Attività svolta (es. idraulico, elettricista, piastrellista)"
+            value={attivitaNuovo}
+            onChange={(e) => setAttivitaNuovo(e.target.value)}
+            style={{ width: "100%", padding: 8 }}
+          />
         </div>
         {errore && <p style={{ color: "red" }}>{errore}</p>}
         {messaggio && <p style={{ color: "green" }}>{messaggio}</p>}
