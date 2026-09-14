@@ -57,32 +57,29 @@ export default function CantiereDettaglioPage() {
     setErrore(null);
     setMessaggio(null);
 
-    // Cerca se esiste già un profilo con questa email
-    const { data: profiloEsistente } = await supabase
-      .from("profili")
-      .select("id")
-      .eq("email", emailNuovo)
-      .maybeSingle();
+    const { data: sessione } = await supabase.auth.getSession();
+    const token = sessione?.session?.access_token;
 
-    if (!profiloEsistente) {
-      setErrore(
-        "Questa persona non ha ancora un account GENESIVOX. Creala prima da Supabase (Authentication → Add user), poi riprova qui."
-      );
+    const risposta = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/invita-utente`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ email: emailNuovo, cantiereId, ruolo: ruoloNuovo }),
+      }
+    );
+
+    const risultato = await risposta.json();
+
+    if (!risposta.ok) {
+      setErrore(risultato.error ?? "Errore durante l'invito");
       return;
     }
 
-    const { error } = await supabase.from("cantiere_membri").insert({
-      cantiere_id: cantiereId,
-      profilo_id: profiloEsistente.id,
-      ruolo: ruoloNuovo,
-    });
-
-    if (error) {
-      setErrore(error.message);
-      return;
-    }
-
-    setMessaggio("Persona aggiunta al cantiere.");
+    setMessaggio("Persona invitata: riceverà un'email per accedere al cantiere.");
     setEmailNuovo("");
     carica();
   }
