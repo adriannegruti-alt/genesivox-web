@@ -45,7 +45,7 @@ export default function CantiereDettaglioPage() {
 
     const { data: m, error: mErr } = await supabase
       .from("cantiere_membri")
-      .select("id, ruolo, nome_impresa, attivita, profili!cantiere_membri_profilo_id_fkey(email)")
+      .select("id, ruolo, nome_impresa, attivita, stato, profili!cantiere_membri_profilo_id_fkey(email)")
       .eq("cantiere_id", cantiereId);
 
     if (mErr) console.error("Errore caricamento membri:", mErr);
@@ -100,10 +100,45 @@ export default function CantiereDettaglioPage() {
 
   if (!cantiere) return <p style={{ padding: 24 }}>Caricamento...</p>;
 
+  const linkPubblico = `https://genesivox-web.vercel.app/c/${cantiere.qr_token}`;
+  const membriApprovati = membri.filter((m: any) => m.stato !== "in_attesa");
+  const membriInAttesa = membri.filter((m: any) => m.stato === "in_attesa");
+
+  async function approva(membroId: string) {
+    await supabase.from("cantiere_membri").update({ stato: "approvato" }).eq("id", membroId);
+    carica();
+  }
+
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 700 }}>
       <h1>{cantiere.nome}</h1>
       {cantiere.indirizzo && <p style={{ color: "#666" }}>{cantiere.indirizzo}</p>}
+
+      <div style={{ margin: "16px 0", padding: 16, border: "1px solid #ddd", borderRadius: 8, textAlign: "center" }}>
+        <h3>QR-code del cantiere</h3>
+        <img
+          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(linkPubblico)}`}
+          alt="QR code cantiere"
+        />
+        <p style={{ fontSize: 13, color: "#666", wordBreak: "break-all" }}>{linkPubblico}</p>
+        <p style={{ fontSize: 13 }}>Stampa questo codice e affiggilo in cantiere. Chi lo scansiona può registrarsi per accedere.</p>
+      </div>
+
+      {membriInAttesa.length > 0 && (
+        <div style={{ margin: "16px 0", padding: 16, border: "1px solid #f0ad4e", borderRadius: 8 }}>
+          <h3 style={{ marginTop: 0 }}>Richieste in attesa di approvazione</h3>
+          {membriInAttesa.map((m: any) => (
+            <div key={m.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
+              <span>
+                {m.profili?.email} — {RUOLI.find((r) => r.value === m.ruolo)?.label} — {m.nome_impresa} ({m.attivita})
+              </span>
+              <button onClick={() => approva(m.id)} style={{ padding: "4px 12px" }}>
+                Approva
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <h2>Persone assegnate</h2>
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 24 }}>
@@ -116,7 +151,7 @@ export default function CantiereDettaglioPage() {
           </tr>
         </thead>
         <tbody>
-          {membri.map((m) => (
+          {membriApprovati.map((m) => (
             <tr key={m.id} style={{ borderBottom: "1px solid #eee" }}>
               <td style={{ padding: 8 }}>{m.profili?.email}</td>
               <td style={{ padding: 8 }}>
