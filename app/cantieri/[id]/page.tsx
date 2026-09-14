@@ -39,10 +39,12 @@ export default function CantiereDettaglioPage() {
       .single();
     setCantiere(c);
 
-    const { data: m } = await supabase
+    const { data: m, error: mErr } = await supabase
       .from("cantiere_membri")
-      .select("id, ruolo, profili(email)")
+      .select("id, ruolo, profili!cantiere_membri_profilo_id_fkey(email)")
       .eq("cantiere_id", cantiereId);
+
+    if (mErr) console.error("Errore caricamento membri:", mErr);
     setMembri((m as unknown as Membro[]) || []);
   }
 
