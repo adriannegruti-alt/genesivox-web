@@ -62,12 +62,19 @@ export default function PaginaPubblicaCantierePage() {
       password,
     });
 
-    if (loginErr || !loginData?.user) {
+    if (loginErr || !loginData?.user || !loginData?.session) {
       setErrore(
         `Accesso non riuscito: ${loginErr?.message ?? "errore sconosciuto"}. Se hai già provato con questa email, verifica di usare la STESSA password del primo tentativo, oppure usa un'email nuova.`
       );
       return;
     }
+
+    // Forza esplicitamente la sessione sul client, per garantire che le
+    // richieste successive (insert su cantiere_membri) siano autenticate
+    await supabase.auth.setSession({
+      access_token: loginData.session.access_token,
+      refresh_token: loginData.session.refresh_token,
+    });
 
     // 3. Verifica esplicitamente che la sessione sia davvero presente lato client
     const { data: sessioneCheck } = await supabase.auth.getSession();
