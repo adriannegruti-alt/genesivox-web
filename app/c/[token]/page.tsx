@@ -64,7 +64,7 @@ export default function PaginaPubblicaCantierePage() {
 
     if (loginErr || !loginData?.user) {
       setErrore(
-        "Account creato ma non ancora confermato. Controlla la tua email e clicca il link di conferma, poi riprova ad accedere."
+        `Accesso non riuscito: ${loginErr?.message ?? "errore sconosciuto"}. Se hai già provato con questa email, verifica di usare la STESSA password del primo tentativo, oppure usa un'email nuova.`
       );
       return;
     }
