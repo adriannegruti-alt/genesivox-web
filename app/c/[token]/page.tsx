@@ -89,17 +89,16 @@ export default function PaginaPubblicaCantierePage() {
     await supabase.from("profili").upsert({ id: userId, email, ruolo: "impresa" });
 
     // 3. Richiesta di iscrizione al cantiere (stato: in attesa di approvazione)
-    const { error: membroErr } = await supabase.from("cantiere_membri").upsert(
-      {
-        cantiere_id: cantiere.id,
-        profilo_id: userId,
-        ruolo,
-        nome_impresa: nomeImpresa || null,
-        attivita: attivita || null,
-        stato: "in_attesa",
-      },
-      { onConflict: "cantiere_id,profilo_id" }
-    );
+    // Uso insert semplice invece di upsert per evitare il comportamento
+    // combinato INSERT+UPDATE di "ON CONFLICT", che con RLS può dare falsi blocchi.
+    const { error: membroErr } = await supabase.from("cantiere_membri").insert({
+      cantiere_id: cantiere.id,
+      profilo_id: userId,
+      ruolo,
+      nome_impresa: nomeImpresa || null,
+      attivita: attivita || null,
+      stato: "in_attesa",
+    });
 
     if (membroErr) {
       console.error("Errore completo cantiere_membri:", membroErr, {
