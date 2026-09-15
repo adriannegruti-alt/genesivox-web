@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
 const RUOLI = [
@@ -113,6 +114,9 @@ export default function CantiereDettaglioPage() {
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 700 }}>
       <h1>{cantiere.nome}</h1>
       {cantiere.indirizzo && <p style={{ color: "#666" }}>{cantiere.indirizzo}</p>}
+      <p>
+        <Link href={`/cantieri/${cantiereId}/documenti`}>📄 I miei documenti per questo cantiere</Link>
+      </p>
 
       <div style={{ margin: "16px 0", padding: 16, border: "1px solid #ddd", borderRadius: 8, textAlign: "center" }}>
         <h3>QR-code del cantiere</h3>
