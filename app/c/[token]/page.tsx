@@ -95,7 +95,12 @@ export default function PaginaPubblicaCantierePage() {
     );
 
     if (membroErr) {
-      setErrore(membroErr.message);
+      console.error("Errore completo cantiere_membri:", membroErr, {
+        userId,
+        cantiereId: cantiere.id,
+        authUser: (await supabase.auth.getUser()).data.user?.id,
+      });
+      setErrore(`${membroErr.message} (codice: ${membroErr.code ?? "?"})`);
       return;
     }
 
