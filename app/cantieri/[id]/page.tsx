@@ -115,7 +115,20 @@ export default function CantiereDettaglioPage() {
       <h1>{cantiere.nome}</h1>
       {cantiere.indirizzo && <p style={{ color: "#666" }}>{cantiere.indirizzo}</p>}
       <p>
-        <Link href={`/cantieri/${cantiereId}/documenti`}>📄 I miei documenti per questo cantiere</Link>
+        <Link
+          href={`/cantieri/${cantiereId}/documenti`}
+          style={{
+            display: "inline-block",
+            padding: "10px 20px",
+            backgroundColor: "#1a73e8",
+            color: "#fff",
+            borderRadius: 6,
+            textDecoration: "none",
+            fontWeight: 500,
+          }}
+        >
+          📄 I miei documenti per questo cantiere
+        </Link>
       </p>
 
       <div style={{ margin: "16px 0", padding: 16, border: "1px solid #ddd", borderRadius: 8, textAlign: "center" }}>
