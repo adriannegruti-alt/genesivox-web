@@ -47,31 +47,36 @@ export default function PaginaPubblicaCantierePage() {
 
     if (!cantiere) return;
 
-    // 1. Crea l'account (o effettua login se esiste già)
-    const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+    // 1. Crea l'account
+    const { error: signUpErr } = await supabase.auth.signUp({ email, password });
+
+    if (signUpErr && !signUpErr.message.toLowerCase().includes("already registered")) {
+      setErrore(signUpErr.message);
+      return;
+    }
+
+    // 2. Forza sempre il login esplicito, per garantire che la sessione sia attiva
+    //    prima di procedere (indipendentemente da cosa ha fatto signUp)
+    const { data: loginData, error: loginErr } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    let userId = signUpData?.user?.id;
-
-    if (signUpErr) {
-      // Se l'utente esiste già, prova il login invece
-      const { data: loginData, error: loginErr } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (loginErr) {
-        setErrore(signUpErr.message);
-        return;
-      }
-      userId = loginData.user?.id;
-    }
-
-    if (!userId) {
-      setErrore("Errore durante la registrazione.");
+    if (loginErr || !loginData?.user) {
+      setErrore(
+        "Account creato ma non ancora confermato. Controlla la tua email e clicca il link di conferma, poi riprova ad accedere."
+      );
       return;
     }
+
+    // 3. Verifica esplicitamente che la sessione sia davvero presente lato client
+    const { data: sessioneCheck } = await supabase.auth.getSession();
+    if (!sessioneCheck?.session) {
+      setErrore("Sessione non attiva, riprova tra qualche secondo.");
+      return;
+    }
+
+    const userId = loginData.user.id;
 
     // 2. Crea/aggiorna il profilo
     await supabase.from("profili").upsert({ id: userId, email, ruolo: "impresa" });
