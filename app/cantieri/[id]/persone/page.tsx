@@ -111,6 +111,8 @@ export default function CantiereDettaglioPage() {
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 700 }}>
       <h1>Persone assegnate</h1>
+
+      {membriInAttesa.length > 0 && (
         <div style={{ margin: "16px 0", padding: 16, border: "1px solid #f0ad4e", borderRadius: 8 }}>
           <h3 style={{ marginTop: 0 }}>Richieste in attesa di approvazione</h3>
           {membriInAttesa.map((m: any) => (
@@ -126,7 +128,6 @@ export default function CantiereDettaglioPage() {
         </div>
       )}
 
-      <h2>Persone assegnate</h2>
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 24 }}>
         <thead>
           <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
