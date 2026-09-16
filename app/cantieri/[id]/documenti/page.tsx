@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
 type TipoDocumento = { id: string; nome: string; obbligatorio: boolean };
-type Documento = { id: string; tipo_documento: string; nome_file: string | null; storage_path: string; creato_il: string };
+type Documento = { id: string; tipo_documento: string };
 
 export default function DocumentiCantierePage() {
   const params = useParams();
@@ -17,7 +18,6 @@ export default function DocumentiCantierePage() {
   const [documentiCaricati, setDocumentiCaricati] = useState<Documento[]>([]);
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
-  const [uploadInCorso, setUploadInCorso] = useState<string | null>(null);
 
   async function carica() {
     setErrore(null);
@@ -50,7 +50,7 @@ export default function DocumentiCantierePage() {
 
     const { data: docs } = await supabase
       .from("documenti")
-      .select("id, tipo_documento, nome_file, storage_path, creato_il")
+      .select("id, tipo_documento")
       .eq("cantiere_id", cantiereId)
       .eq("profilo_id", userData.user.id);
     setDocumentiCaricati(docs || []);
@@ -62,50 +62,6 @@ export default function DocumentiCantierePage() {
     if (cantiereId) carica();
   }, [cantiereId]);
 
-  async function caricaFile(tipoNome: string, file: File) {
-    setUploadInCorso(tipoNome);
-    setErrore(null);
-
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData?.user) return;
-
-    const percorso = `${cantiereId}/${userData.user.id}/${Date.now()}_${file.name}`;
-
-    const { error: uploadErr } = await supabase.storage
-      .from("documenti-cantieri")
-      .upload(percorso, file);
-
-    if (uploadErr) {
-      setErrore(uploadErr.message);
-      setUploadInCorso(null);
-      return;
-    }
-
-    const { error: dbErr } = await supabase.from("documenti").insert({
-      cantiere_id: cantiereId,
-      profilo_id: userData.user.id,
-      tipo_documento: tipoNome,
-      storage_path: percorso,
-      nome_file: file.name,
-    });
-
-    if (dbErr) {
-      setErrore(dbErr.message);
-    }
-
-    setUploadInCorso(null);
-    carica();
-  }
-
-  async function scaricaFile(storagePath: string, nomeFile: string | null) {
-    const { data, error } = await supabase.storage.from("documenti-cantieri").createSignedUrl(storagePath, 60);
-    if (error || !data) {
-      setErrore("Impossibile aprire il file.");
-      return;
-    }
-    window.open(data.signedUrl, "_blank");
-  }
-
   if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
   if (errore && !mioRuolo) return <p style={{ padding: 24, color: "red" }}>{errore}</p>;
 
@@ -114,21 +70,22 @@ export default function DocumentiCantierePage() {
       <h1>Documenti — {cantiere?.nome}</h1>
       <p style={{ color: "#666" }}>Il tuo ruolo in questo cantiere: <strong>{mioRuolo}</strong></p>
 
-      {errore && <p style={{ color: "red" }}>{errore}</p>}
-
       {tipiRichiesti.map((tipo) => {
-        const documento = documentiCaricati.find((d) => d.tipo_documento === tipo.nome);
+        const numeroFile = documentiCaricati.filter((d) => d.tipo_documento === tipo.nome).length;
         return (
-          <div
+          <Link
             key={tipo.id}
+            href={`/cantieri/${cantiereId}/documenti/${tipo.id}`}
             style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
               padding: 12,
               marginBottom: 8,
               border: "1px solid #ddd",
               borderRadius: 8,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
+              textDecoration: "none",
+              color: "inherit",
             }}
           >
             <div>
@@ -138,32 +95,12 @@ export default function DocumentiCantierePage() {
               ) : (
                 <span style={{ color: "#888", fontSize: 12 }}>(condizionale)</span>
               )}
-              <div style={{ fontSize: 13, color: documento ? "green" : "#c0392b" }}>
-                {documento ? `Caricato: ${documento.nome_file}` : "Mancante"}
+              <div style={{ fontSize: 13, color: numeroFile > 0 ? "green" : "#c0392b" }}>
+                {numeroFile > 0 ? `${numeroFile} file caricati` : "Mancante"}
               </div>
             </div>
-            <div>
-              {documento && (
-                <button
-                  onClick={() => scaricaFile(documento.storage_path, documento.nome_file)}
-                  style={{ marginRight: 8, padding: "4px 10px" }}
-                >
-                  Apri
-                </button>
-              )}
-              <label style={{ padding: "4px 10px", border: "1px solid #ccc", borderRadius: 4, cursor: "pointer" }}>
-                {uploadInCorso === tipo.nome ? "Caricamento..." : documento ? "Sostituisci" : "Carica"}
-                <input
-                  type="file"
-                  style={{ display: "none" }}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) caricaFile(tipo.nome, file);
-                  }}
-                />
-              </label>
-            </div>
-          </div>
+            <span style={{ color: "#999" }}>→</span>
+          </Link>
         );
       })}
       {tipiRichiesti.length === 0 && <p>Nessun documento richiesto per il tuo ruolo.</p>}
