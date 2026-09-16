@@ -5,105 +5,169 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
-type TipoDocumento = { id: string; nome: string; obbligatorio: boolean };
-type Documento = { id: string; tipo_documento: string };
+type Documento = {
+  id: string;
+  nome_file: string | null;
+  storage_path: string;
+  creato_il: string;
+};
 
-export default function DocumentiCantierePage() {
+export default function DettaglioTipoDocumentoPage() {
   const params = useParams();
   const cantiereId = params.id as string;
+  const tipoId = params.tipoId as string;
 
-  const [cantiere, setCantiere] = useState<any>(null);
-  const [mioRuolo, setMioRuolo] = useState<string | null>(null);
-  const [tipiRichiesti, setTipiRichiesti] = useState<TipoDocumento[]>([]);
-  const [documentiCaricati, setDocumentiCaricati] = useState<Documento[]>([]);
+  const [tipo, setTipo] = useState<any>(null);
+  const [documenti, setDocumenti] = useState<Documento[]>([]);
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
+  const [uploadInCorso, setUploadInCorso] = useState(false);
 
   async function carica() {
     setErrore(null);
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) return;
 
-    const { data: c } = await supabase.from("cantieri").select("id, nome").eq("id", cantiereId).single();
-    setCantiere(c);
+    const { data: t } = await supabase.from("tipi_documento").select("id, nome, obbligatorio").eq("id", tipoId).single();
+    setTipo(t);
 
-    const { data: membro } = await supabase
-      .from("cantiere_membri")
-      .select("ruolo")
-      .eq("cantiere_id", cantiereId)
-      .eq("profilo_id", userData.user.id)
-      .maybeSingle();
-
-    if (!membro) {
-      setErrore("Non sei ancora membro approvato di questo cantiere.");
+    if (!t) {
       setCaricamento(false);
       return;
     }
-    setMioRuolo(membro.ruolo);
-
-    const { data: tipi } = await supabase
-      .from("tipi_documento")
-      .select("id, nome, obbligatorio")
-      .eq("ruolo", membro.ruolo)
-      .order("obbligatorio", { ascending: false });
-    setTipiRichiesti(tipi || []);
 
     const { data: docs } = await supabase
       .from("documenti")
-      .select("id, tipo_documento")
+      .select("id, nome_file, storage_path, creato_il")
       .eq("cantiere_id", cantiereId)
-      .eq("profilo_id", userData.user.id);
-    setDocumentiCaricati(docs || []);
+      .eq("profilo_id", userData.user.id)
+      .eq("tipo_documento", t.nome)
+      .order("creato_il", { ascending: false });
 
+    setDocumenti(docs || []);
     setCaricamento(false);
   }
 
   useEffect(() => {
-    if (cantiereId) carica();
-  }, [cantiereId]);
+    if (cantiereId && tipoId) carica();
+  }, [cantiereId, tipoId]);
+
+  async function caricaFile(file: File) {
+    if (!tipo) return;
+    setUploadInCorso(true);
+    setErrore(null);
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) return;
+
+    const percorso = `${cantiereId}/${userData.user.id}/${Date.now()}_${file.name}`;
+
+    const { error: uploadErr } = await supabase.storage.from("documenti-cantieri").upload(percorso, file);
+    if (uploadErr) {
+      setErrore(uploadErr.message);
+      setUploadInCorso(false);
+      return;
+    }
+
+    const { error: dbErr } = await supabase.from("documenti").insert({
+      cantiere_id: cantiereId,
+      profilo_id: userData.user.id,
+      tipo_documento: tipo.nome,
+      storage_path: percorso,
+      nome_file: file.name,
+    });
+
+    if (dbErr) setErrore(dbErr.message);
+
+    setUploadInCorso(false);
+    carica();
+  }
+
+  async function apriFile(storagePath: string) {
+    const { data, error } = await supabase.storage.from("documenti-cantieri").createSignedUrl(storagePath, 60);
+    if (error || !data) {
+      setErrore("Impossibile aprire il file.");
+      return;
+    }
+    window.open(data.signedUrl, "_blank");
+  }
+
+  async function eliminaFile(documento: Documento) {
+    if (!confirm(`Eliminare "${documento.nome_file}"? L'operazione non è reversibile.`)) return;
+
+    await supabase.storage.from("documenti-cantieri").remove([documento.storage_path]);
+    const { error } = await supabase.from("documenti").delete().eq("id", documento.id);
+
+    if (error) {
+      setErrore(error.message);
+      return;
+    }
+    carica();
+  }
 
   if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
-  if (errore && !mioRuolo) return <p style={{ padding: 24, color: "red" }}>{errore}</p>;
+  if (!tipo) return <p style={{ padding: 24 }}>Documento non trovato.</p>;
 
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 700 }}>
-      <h1>Documenti — {cantiere?.nome}</h1>
-      <p style={{ color: "#666" }}>Il tuo ruolo in questo cantiere: <strong>{mioRuolo}</strong></p>
+      <p>
+        <Link href={`/cantieri/${cantiereId}/documenti`}>← Torna ai documenti</Link>
+      </p>
+      <h1>{tipo.nome}</h1>
 
-      {tipiRichiesti.map((tipo) => {
-        const numeroFile = documentiCaricati.filter((d) => d.tipo_documento === tipo.nome).length;
-        return (
-          <Link
-            key={tipo.id}
-            href={`/cantieri/${cantiereId}/documenti/${tipo.id}`}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: 12,
-              marginBottom: 8,
-              border: "1px solid #ddd",
-              borderRadius: 8,
-              textDecoration: "none",
-              color: "inherit",
-            }}
-          >
-            <div>
-              <strong>{tipo.nome}</strong>{" "}
-              {tipo.obbligatorio ? (
-                <span style={{ color: "#c0392b", fontSize: 12 }}>(obbligatorio)</span>
-              ) : (
-                <span style={{ color: "#888", fontSize: 12 }}>(condizionale)</span>
-              )}
-              <div style={{ fontSize: 13, color: numeroFile > 0 ? "green" : "#c0392b" }}>
-                {numeroFile > 0 ? `${numeroFile} file caricati` : "Mancante"}
-              </div>
-            </div>
-            <span style={{ color: "#999" }}>→</span>
-          </Link>
-        );
-      })}
-      {tipiRichiesti.length === 0 && <p>Nessun documento richiesto per il tuo ruolo.</p>}
+      <label
+        style={{
+          display: "inline-block",
+          padding: "10px 20px",
+          backgroundColor: "#1a73e8",
+          color: "#fff",
+          borderRadius: 6,
+          cursor: "pointer",
+          marginBottom: 16,
+        }}
+      >
+        {uploadInCorso ? "Caricamento..." : "+ Carica nuovo file"}
+        <input
+          type="file"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) caricaFile(file);
+          }}
+        />
+      </label>
+
+      {errore && <p style={{ color: "red" }}>{errore}</p>}
+
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
+            <th style={{ padding: 8 }}>File</th>
+            <th style={{ padding: 8 }}>Caricato il</th>
+            <th style={{ padding: 8 }}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {documenti.map((d) => (
+            <tr key={d.id} style={{ borderBottom: "1px solid #eee" }}>
+              <td style={{ padding: 8 }}>{d.nome_file}</td>
+              <td style={{ padding: 8 }}>{new Date(d.creato_il).toLocaleDateString("it-IT")}</td>
+              <td style={{ padding: 8, textAlign: "right" }}>
+                <button onClick={() => apriFile(d.storage_path)} style={{ marginRight: 8, padding: "4px 10px" }}>
+                  Apri
+                </button>
+                <button
+                  onClick={() => eliminaFile(d)}
+                  style={{ padding: "4px 10px", color: "#c0392b", border: "1px solid #c0392b", borderRadius: 4, background: "none" }}
+                >
+                  Elimina
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {documenti.length === 0 && <p>Nessun file caricato ancora.</p>}
     </div>
   );
 }
