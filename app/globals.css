@@ -1,0 +1,56 @@
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Tabelle: scorrimento orizzontale invece di tagliare il contenuto */
+table {
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  /* Barra strumenti: va a capo invece di restringersi */
+  .shell-topbar {
+    flex-wrap: wrap;
+    height: auto !important;
+    padding: 8px 12px !important;
+    gap: 8px;
+  }
+  .shell-topbar-menu {
+    flex-wrap: wrap;
+  }
+
+  /* Sidebar fisse (cornice generale + dentro il cantiere):
+     diventano a piena larghezza, sopra il contenuto invece che a fianco */
+  .shell-sidebar,
+  .cantiere-sidebar {
+    width: 100% !important;
+    min-height: auto !important;
+    border-right: none !important;
+    border-bottom: 1px solid #eee;
+  }
+  .shell-body,
+  .cantiere-body {
+    flex-direction: column !important;
+  }
+
+  /* Colonne affiancate (es. vista Imprese) impilate invece che a fianco */
+  .colonne-affiancate {
+    flex-direction: column !important;
+  }
+  .colonna-larghezza-fissa {
+    width: 100% !important;
+  }
+
+  /* Contenitori con larghezza massima: usano tutto lo spazio disponibile */
+  .contenuto-pagina {
+    max-width: 100% !important;
+    padding: 16px !important;
+  }
+}
