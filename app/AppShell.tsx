@@ -13,9 +13,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   const [utente, setUtente] = useState<{ email: string } | null>(null);
-  const [menuAperto, setMenuAperto] = useState<"cantieri" | "documenti" | null>(null);
+  const [menuAperto, setMenuAperto] = useState<"cantieri" | "documenti" | "archivio" | null>(null);
 
   const [cantieri, setCantieri] = useState<Cantiere[]>([]);
+  const [cantieriArchiviati, setCantieriArchiviati] = useState<Cantiere[]>([]);
   const [documenti, setDocumenti] = useState<TipoDocumento[]>([]);
   const [primoCantiereId, setPrimoCantiereId] = useState<string | null>(null);
 
@@ -56,6 +57,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     setPrimoCantiereId(membro.cantiere_id);
     const { data: tipi } = await supabase.from("tipi_documento").select("id, nome").eq("ruolo", membro.ruolo);
     setDocumenti(tipi || []);
+  }
+
+  async function apriMenuArchivio() {
+    setMenuAperto("archivio");
+    const { data } = await supabase
+      .from("cantieri")
+      .select("id, nome")
+      .eq("archiviato", true)
+      .order("nome");
+    setCantieriArchiviati(data || []);
+  }
+
+  async function ripristinaCantiere(id: string) {
+    await supabase.from("cantieri").update({ archiviato: false }).eq("id", id);
+    apriMenuArchivio();
   }
 
   async function esci() {
@@ -121,6 +137,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           >
             I miei documenti
           </button>
+          <button
+            onClick={() => (menuAperto === "archivio" ? setMenuAperto(null) : apriMenuArchivio())}
+            style={{
+              padding: "6px 12px",
+              border: "none",
+              background: menuAperto === "archivio" ? "#eef6ff" : "transparent",
+              borderRadius: 6,
+              cursor: "pointer",
+            }}
+          >
+            Archivio
+          </button>
         </div>
 
         <div style={{ fontSize: 13 }}>
@@ -184,6 +212,31 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 ))}
                 {documenti.length === 0 && (
                   <p style={{ color: "#666", fontSize: 13 }}>Nessun documento associato al tuo ruolo.</p>
+                )}
+              </div>
+            )}
+
+            {menuAperto === "archivio" && (
+              <div>
+                {cantieriArchiviati.map((c) => (
+                  <div
+                    key={c.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "8px 4px",
+                      fontSize: 14,
+                    }}
+                  >
+                    <span style={{ color: "#666" }}>{c.nome}</span>
+                    <button onClick={() => ripristinaCantiere(c.id)} style={{ fontSize: 12, padding: "2px 8px" }}>
+                      Ripristina
+                    </button>
+                  </div>
+                ))}
+                {cantieriArchiviati.length === 0 && (
+                  <p style={{ color: "#666", fontSize: 13 }}>Nessun cantiere archiviato.</p>
                 )}
               </div>
             )}
