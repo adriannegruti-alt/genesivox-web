@@ -8,7 +8,7 @@ type Cantiere = {
   id: string;
   nome: string;
   indirizzo: string | null;
-  creato_il: string;
+  archiviato: boolean;
 };
 
 export default function CantieriPage() {
@@ -18,10 +18,15 @@ export default function CantieriPage() {
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
 
+  const [modificaId, setModificaId] = useState<string | null>(null);
+  const [nomeModifica, setNomeModifica] = useState("");
+  const [indirizzoModifica, setIndirizzoModifica] = useState("");
+
   async function caricaCantieri() {
     const { data, error } = await supabase
       .from("cantieri")
-      .select("id, nome, indirizzo, creato_il")
+      .select("id, nome, indirizzo, archiviato")
+      .eq("archiviato", false)
       .order("creato_il", { ascending: false });
     if (!error && data) setCantieri(data);
     setCaricamento(false);
@@ -54,6 +59,37 @@ export default function CantieriPage() {
     caricaCantieri();
   }
 
+  function iniziaModifica(c: Cantiere) {
+    setModificaId(c.id);
+    setNomeModifica(c.nome);
+    setIndirizzoModifica(c.indirizzo ?? "");
+  }
+
+  async function salvaModifica(id: string) {
+    const { error } = await supabase
+      .from("cantieri")
+      .update({ nome: nomeModifica, indirizzo: indirizzoModifica })
+      .eq("id", id);
+
+    if (error) {
+      setErrore(error.message);
+      return;
+    }
+    setModificaId(null);
+    caricaCantieri();
+  }
+
+  async function archiviaCantiere(id: string, nomeCantiere: string) {
+    if (!confirm(`Archiviare "${nomeCantiere}"? Non apparirà più nella lista, ma i dati restano salvati.`)) return;
+
+    const { error } = await supabase.from("cantieri").update({ archiviato: true }).eq("id", id);
+    if (error) {
+      setErrore(error.message);
+      return;
+    }
+    caricaCantieri();
+  }
+
   if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
 
   return (
@@ -83,16 +119,54 @@ export default function CantieriPage() {
         <button type="submit" style={{ padding: "8px 16px" }}>Crea cantiere</button>
       </form>
 
-      <ul style={{ listStyle: "none", padding: 0 }}>
-        {cantieri.map((c) => (
-          <li key={c.id} style={{ padding: 12, borderBottom: "1px solid #eee" }}>
-            <Link href={`/cantieri/${c.id}`}>
-              <strong>{c.nome}</strong>
-            </Link>
-            {c.indirizzo && <span style={{ color: "#666" }}> — {c.indirizzo}</span>}
-          </li>
-        ))}
-      </ul>
+      {cantieri.map((c) => (
+        <div key={c.id} style={{ padding: 12, marginBottom: 8, border: "1px solid #eee", borderRadius: 8 }}>
+          {modificaId === c.id ? (
+            <div>
+              <input
+                value={nomeModifica}
+                onChange={(e) => setNomeModifica(e.target.value)}
+                style={{ width: "100%", padding: 6, marginBottom: 6 }}
+              />
+              <input
+                value={indirizzoModifica}
+                onChange={(e) => setIndirizzoModifica(e.target.value)}
+                style={{ width: "100%", padding: 6, marginBottom: 6 }}
+              />
+              <button onClick={() => salvaModifica(c.id)} style={{ padding: "4px 12px", marginRight: 8 }}>
+                Salva
+              </button>
+              <button onClick={() => setModificaId(null)} style={{ padding: "4px 12px" }}>
+                Annulla
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <strong>{c.nome}</strong>
+                {c.indirizzo && <span style={{ color: "#666" }}> — {c.indirizzo}</span>}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <Link
+                  href={`/cantieri/${c.id}`}
+                  style={{ padding: "4px 10px", border: "1px solid #1a73e8", color: "#1a73e8", borderRadius: 4, textDecoration: "none" }}
+                >
+                  Apri
+                </Link>
+                <button onClick={() => iniziaModifica(c)} style={{ padding: "4px 10px" }}>
+                  Modifica
+                </button>
+                <button
+                  onClick={() => archiviaCantiere(c.id, c.nome)}
+                  style={{ padding: "4px 10px", color: "#c0392b", border: "1px solid #c0392b", borderRadius: 4, background: "none" }}
+                >
+                  Archivia
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
       {cantieri.length === 0 && <p>Nessun cantiere ancora. Creane uno sopra.</p>}
     </div>
   );
