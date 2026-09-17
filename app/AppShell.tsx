@@ -171,7 +171,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div style={{ fontSize: 13 }}>
           {utente ? (
             <>
-              <span style={{ color: "#666", marginRight: 10 }}>{utente.email}</span>
+              <Link href="/account" style={{ color: "#1a73e8", marginRight: 10, textDecoration: "none" }}>
+                {utente.email}
+              </Link>
               <button onClick={esci} style={{ padding: "6px 12px" }}>
                 Esci
               </button>
