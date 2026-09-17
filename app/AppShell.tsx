@@ -64,6 +64,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div style={{ fontFamily: "sans-serif" }}>
       {/* Barra strumenti in alto */}
       <div
+        className="shell-topbar"
         style={{
           height: 50,
           display: "flex",
@@ -77,7 +78,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           zIndex: 10,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <div className="shell-topbar-menu" style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <strong style={{ marginRight: 16 }}>GENESIVOX</strong>
           <Link
             href="/"
@@ -148,9 +149,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Corpo: sidebar a tendina (se aperta) + contenuto */}
-      <div style={{ display: "flex" }}>
+      <div className="shell-body" style={{ display: "flex" }}>
         {menuAperto && (
-          <div style={{ width: 260, flexShrink: 0, borderRight: "1px solid #eee", padding: 16, minHeight: "calc(100vh - 50px)" }}>
+          <div
+            className="shell-sidebar"
+            style={{ width: 260, flexShrink: 0, borderRight: "1px solid #eee", padding: 16, minHeight: "calc(100vh - 50px)" }}
+          >
             {menuAperto === "cantieri" && (
               <div>
                 <Link
