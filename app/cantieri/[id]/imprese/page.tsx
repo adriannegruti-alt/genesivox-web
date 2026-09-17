@@ -134,9 +134,9 @@ export default function ImpresePage() {
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif" }}>
       <h1>Imprese e subappaltatori</h1>
-      <div style={{ display: "flex", gap: 24, marginTop: 16 }}>
+      <div className="colonne-affiancate" style={{ display: "flex", gap: 24, marginTop: 16 }}>
         {/* Colonna attività */}
-        <div style={{ width: 280, flexShrink: 0, maxHeight: "70vh", overflowY: "auto" }}>
+        <div className="colonna-larghezza-fissa" style={{ width: 280, flexShrink: 0, maxHeight: "70vh", overflowY: "auto" }}>
           {ATTIVITA.map((att) => {
             const presente = attivitaConImprese.has(att);
             return (
