@@ -67,11 +67,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       .eq("archiviato", true)
       .order("nome");
     setCantieriArchiviati(data || []);
+    router.push("/archivio");
   }
 
   async function ripristinaCantiere(id: string) {
     await supabase.from("cantieri").update({ archiviato: false }).eq("id", id);
-    apriMenuArchivio();
+    await apriMenuArchivio();
+    setMenuAperto(null);
+    router.push("/cantieri");
+    router.refresh();
   }
 
   async function esci() {
@@ -229,7 +233,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       fontSize: 14,
                     }}
                   >
-                    <span style={{ color: "#666" }}>{c.nome}</span>
+                    <Link href={`/cantieri/${c.id}`} style={{ color: "#333", textDecoration: "none" }}>
+                      {c.nome}
+                    </Link>
                     <button onClick={() => ripristinaCantiere(c.id)} style={{ fontSize: 12, padding: "2px 8px" }}>
                       Ripristina
                     </button>
