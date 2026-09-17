@@ -153,6 +153,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           >
             Archivio
           </button>
+          <Link
+            href="/crea-account"
+            onClick={() => setMenuAperto(null)}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 6,
+              textDecoration: "none",
+              color: pathname === "/crea-account" ? "#1a73e8" : "#333",
+              fontWeight: pathname === "/crea-account" ? 600 : 400,
+            }}
+          >
+            Crea Account
+          </Link>
         </div>
 
         <div style={{ fontSize: 13 }}>
