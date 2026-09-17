@@ -28,8 +28,9 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
   ];
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "sans-serif" }}>
+    <div className="cantiere-body" style={{ display: "flex", minHeight: "100vh", fontFamily: "sans-serif" }}>
       <div
+        className="cantiere-sidebar"
         style={{
           width: 240,
           flexShrink: 0,
