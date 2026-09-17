@@ -13,7 +13,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   const [utente, setUtente] = useState<{ email: string } | null>(null);
-  const [menuAperto, setMenuAperto] = useState<"panoramica" | "cantieri" | "documenti" | null>(null);
+  const [menuAperto, setMenuAperto] = useState<"cantieri" | "documenti" | null>(null);
 
   const [cantieri, setCantieri] = useState<Cantiere[]>([]);
   const [documenti, setDocumenti] = useState<TipoDocumento[]>([]);
@@ -84,18 +84,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <strong style={{ marginRight: 16 }}>GENESIVOX</strong>
-          <button
-            onClick={() => setMenuAperto(menuAperto === "panoramica" ? null : "panoramica")}
+          <Link
+            href="/"
+            onClick={() => setMenuAperto(null)}
             style={{
               padding: "6px 12px",
-              border: "none",
-              background: menuAperto === "panoramica" ? "#eef6ff" : "transparent",
               borderRadius: 6,
-              cursor: "pointer",
+              textDecoration: "none",
+              color: pathname === "/" ? "#1a73e8" : "#333",
+              fontWeight: pathname === "/" ? 600 : 400,
             }}
           >
             Panoramica
-          </button>
+          </Link>
           <button
             onClick={() => (menuAperto === "cantieri" ? setMenuAperto(null) : apriMenuCantieri())}
             style={{
@@ -140,14 +141,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <div style={{ display: "flex" }}>
         {menuAperto && (
           <div style={{ width: 260, flexShrink: 0, borderRight: "1px solid #eee", padding: 16, minHeight: "calc(100vh - 50px)" }}>
-            {menuAperto === "panoramica" && (
-              <div>
-                <Link href="/cantieri" style={{ display: "block", padding: "8px 0" }}>
-                  I miei cantieri
-                </Link>
-              </div>
-            )}
-
             {menuAperto === "cantieri" && (
               <div>
                 <Link
