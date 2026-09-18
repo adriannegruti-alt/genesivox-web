@@ -12,6 +12,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   const [utente, setUtente] = useState<{ email: string } | null>(null);
+  const [autoritaControllo, setAutoritaControllo] = useState(false);
   const [menuAperto, setMenuAperto] = useState<"cantieri" | "archivio" | null>(null);
 
   const [cantieri, setCantieri] = useState<Cantiere[]>([]);
@@ -24,6 +25,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     async function carica() {
       const { data } = await supabase.auth.getUser();
       setUtente(data?.user ? { email: data.user.email ?? "" } : null);
+
+      if (data?.user) {
+        const { data: profilo } = await supabase
+          .from("profili")
+          .select("autorita_controllo")
+          .eq("id", data.user.id)
+          .maybeSingle();
+        setAutoritaControllo(!!profilo?.autorita_controllo);
+      }
     }
     carica();
   }, [pathname]);
@@ -130,6 +140,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           >
             Crea Account
           </Link>
+          {autoritaControllo && (
+            <Link
+              href="/ispettiva"
+              onClick={() => setMenuAperto(null)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 6,
+                textDecoration: "none",
+                color: pathname === "/ispettiva" ? "#1a73e8" : "#333",
+                fontWeight: pathname === "/ispettiva" ? 600 : 400,
+              }}
+            >
+              🔍 Vista Ispettiva
+            </Link>
+          )}
         </div>
 
         <div style={{ fontSize: 13 }}>
