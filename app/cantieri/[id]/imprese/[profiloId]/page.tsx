@@ -28,7 +28,7 @@ export default function DocumentiMembroPage() {
 
     const { data: m, error: mErr } = await supabase
       .from("cantiere_membri")
-      .select("ruolo, nome_impresa, attivita, profili!cantiere_membri_profilo_id_fkey(email)")
+      .select("id, ruolo, nome_impresa, attivita, profili!cantiere_membri_profilo_id_fkey(email)")
       .eq("cantiere_id", cantiereId)
       .eq("profilo_id", profiloId)
       .maybeSingle();
@@ -40,12 +40,17 @@ export default function DocumentiMembroPage() {
     }
     setMembro(m);
 
+    const { data: ruoliExtra } = await supabase.from("membro_ruoli").select("ruolo").eq("membro_id", m.id);
+    const tuttiIRuoli = Array.from(new Set([m.ruolo, ...(ruoliExtra || []).map((r) => r.ruolo)]));
+
     const { data: tipi } = await supabase
       .from("tipi_documento")
       .select("id, nome, obbligatorio, categoria")
-      .eq("ruolo", m.ruolo)
+      .in("ruolo", tuttiIRuoli)
       .order("obbligatorio", { ascending: false });
-    setTipiRichiesti(tipi || []);
+
+    const tipiUnici = Array.from(new Map((tipi || []).map((t) => [t.nome, t])).values());
+    setTipiRichiesti(tipiUnici);
 
     const { data: docs } = await supabase
       .from("documenti")
