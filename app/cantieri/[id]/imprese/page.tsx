@@ -54,6 +54,7 @@ export default function ImpresePage() {
   const cantiereId = params.id as string;
 
   const [membri, setMembri] = useState<Membro[]>([]);
+  const [attivitaExtraPerMembro, setAttivitaExtraPerMembro] = useState<Record<string, string[]>>({});
   const [attivitaSelezionata, setAttivitaSelezionata] = useState<string | null>(null);
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
@@ -76,7 +77,21 @@ export default function ImpresePage() {
       return;
     }
 
-    setMembri((m as unknown as Membro[]) || []);
+    const membriCaricati = (m as unknown as Membro[]) || [];
+    setMembri(membriCaricati);
+
+    // Carica le attività extra di tutti i membri, in un'unica query
+    const idMembri = membriCaricati.map((x) => x.id);
+    if (idMembri.length > 0) {
+      const { data: extra } = await supabase.from("membro_attivita").select("membro_id, attivita").in("membro_id", idMembri);
+      const mappa: Record<string, string[]> = {};
+      (extra || []).forEach((e) => {
+        if (!mappa[e.membro_id]) mappa[e.membro_id] = [];
+        mappa[e.membro_id].push(e.attivita);
+      });
+      setAttivitaExtraPerMembro(mappa);
+    }
+
     setCaricamento(false);
   }
 
@@ -128,8 +143,13 @@ export default function ImpresePage() {
   if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
   if (errore && membri.length === 0) return <p style={{ padding: 24, color: "red" }}>{errore}</p>;
 
-  const attivitaConImprese = new Set(membri.filter((m) => m.attivita).map((m) => m.attivita));
-  const impreseAttivitaSelezionata = membri.filter((m) => m.attivita === attivitaSelezionata);
+  function attivitaDiMembro(m: Membro): string[] {
+    const extra = attivitaExtraPerMembro[m.id] || [];
+    return m.attivita ? [m.attivita, ...extra] : extra;
+  }
+
+  const attivitaConImprese = new Set(membri.flatMap((m) => attivitaDiMembro(m)));
+  const impreseAttivitaSelezionata = membri.filter((m) => attivitaSelezionata && attivitaDiMembro(m).includes(attivitaSelezionata));
 
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif" }}>
