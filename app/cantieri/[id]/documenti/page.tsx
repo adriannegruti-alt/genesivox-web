@@ -13,7 +13,7 @@ export default function DocumentiCantierePage() {
   const cantiereId = params.id as string;
 
   const [cantiere, setCantiere] = useState<any>(null);
-  const [mioRuolo, setMioRuolo] = useState<string | null>(null);
+  const [mieiRuoli, setMieiRuoli] = useState<string[]>([]);
   const [tipiRichiesti, setTipiRichiesti] = useState<TipoDocumento[]>([]);
   const [documentiCaricati, setDocumentiCaricati] = useState<Documento[]>([]);
   const [caricamento, setCaricamento] = useState(true);
@@ -29,7 +29,7 @@ export default function DocumentiCantierePage() {
 
     const { data: membro } = await supabase
       .from("cantiere_membri")
-      .select("ruolo")
+      .select("id, ruolo")
       .eq("cantiere_id", cantiereId)
       .eq("profilo_id", userData.user.id)
       .maybeSingle();
@@ -39,14 +39,20 @@ export default function DocumentiCantierePage() {
       setCaricamento(false);
       return;
     }
-    setMioRuolo(membro.ruolo);
+
+    const { data: ruoliExtra } = await supabase.from("membro_ruoli").select("ruolo").eq("membro_id", membro.id);
+    const tuttiIRuoli = Array.from(new Set([membro.ruolo, ...(ruoliExtra || []).map((r) => r.ruolo)]));
+    setMieiRuoli(tuttiIRuoli);
 
     const { data: tipi } = await supabase
       .from("tipi_documento")
       .select("id, nome, obbligatorio")
-      .eq("ruolo", membro.ruolo)
+      .in("ruolo", tuttiIRuoli)
       .order("obbligatorio", { ascending: false });
-    setTipiRichiesti(tipi || []);
+
+    // Rimuove eventuali duplicati (stesso nome documento richiesto da più ruoli)
+    const tipiUnici = Array.from(new Map((tipi || []).map((t) => [t.nome, t])).values());
+    setTipiRichiesti(tipiUnici);
 
     const { data: docs } = await supabase
       .from("documenti")
@@ -63,12 +69,12 @@ export default function DocumentiCantierePage() {
   }, [cantiereId]);
 
   if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
-  if (errore && !mioRuolo) return <p style={{ padding: 24, color: "red" }}>{errore}</p>;
+  if (errore && mieiRuoli.length === 0) return <p style={{ padding: 24, color: "red" }}>{errore}</p>;
 
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 700 }}>
       <h1>Documenti — {cantiere?.nome}</h1>
-      <p style={{ color: "#666" }}>Il tuo ruolo in questo cantiere: <strong>{mioRuolo}</strong></p>
+      <p style={{ color: "#666" }}>I tuoi ruoli in questo cantiere: <strong>{mieiRuoli.join(", ")}</strong></p>
 
       {tipiRichiesti.map((tipo) => {
         const numeroFile = documentiCaricati.filter((d) => d.tipo_documento === tipo.nome).length;
