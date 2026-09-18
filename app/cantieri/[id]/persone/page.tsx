@@ -76,16 +76,13 @@ export default function CantiereDettaglioPage() {
       return;
     }
 
-    const { error } = await supabase.from("cantiere_membri").upsert(
-      {
-        cantiere_id: cantiereId,
-        profilo_id: profiloEsistente.id,
-        ruolo: ruoloNuovo,
-        nome_impresa: nomeImpresaNuovo || null,
-        attivita: attivitaNuovo || null,
-      },
-      { onConflict: "cantiere_id,profilo_id" }
-    );
+    const { error } = await supabase.from("cantiere_membri").insert({
+      cantiere_id: cantiereId,
+      profilo_id: profiloEsistente.id,
+      ruolo: ruoloNuovo,
+      nome_impresa: nomeImpresaNuovo || null,
+      attivita: attivitaNuovo || null,
+    });
 
     if (error) {
       setErrore(error.message);
