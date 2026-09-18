@@ -15,6 +15,8 @@ export default function CantieriPage() {
   const [cantieri, setCantieri] = useState<Cantiere[]>([]);
   const [nome, setNome] = useState("");
   const [indirizzo, setIndirizzo] = useState("");
+  const [comune, setComune] = useState("");
+  const [provincia, setProvincia] = useState("");
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
 
@@ -46,6 +48,8 @@ export default function CantieriPage() {
     const { error } = await supabase.from("cantieri").insert({
       nome,
       indirizzo,
+      comune: comune || null,
+      provincia: provincia || null,
       creato_da: userData.user.id,
     });
 
@@ -56,6 +60,8 @@ export default function CantieriPage() {
 
     setNome("");
     setIndirizzo("");
+    setComune("");
+    setProvincia("");
     caricaCantieri();
   }
 
@@ -113,6 +119,20 @@ export default function CantieriPage() {
             value={indirizzo}
             onChange={(e) => setIndirizzo(e.target.value)}
             style={{ width: "100%", padding: 8 }}
+          />
+        </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <input
+            placeholder="Comune"
+            value={comune}
+            onChange={(e) => setComune(e.target.value)}
+            style={{ flex: 1, padding: 8 }}
+          />
+          <input
+            placeholder="Provincia (es. VE)"
+            value={provincia}
+            onChange={(e) => setProvincia(e.target.value)}
+            style={{ width: 100, padding: 8 }}
           />
         </div>
         {errore && <p style={{ color: "red" }}>{errore}</p>}
