@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
 const RUOLI = [
@@ -135,6 +136,7 @@ export default function CantiereDettaglioPage() {
             <th style={{ padding: 8 }}>Ruolo</th>
             <th style={{ padding: 8 }}>Impresa</th>
             <th style={{ padding: 8 }}>Attività</th>
+            <th style={{ padding: 8 }}></th>
           </tr>
         </thead>
         <tbody>
@@ -146,6 +148,11 @@ export default function CantiereDettaglioPage() {
               </td>
               <td style={{ padding: 8 }}>{m.nome_impresa ?? "—"}</td>
               <td style={{ padding: 8 }}>{m.attivita ?? "—"}</td>
+              <td style={{ padding: 8 }}>
+                <Link href={`/cantieri/${cantiereId}/persone/${m.id}`} style={{ fontSize: 13 }}>
+                  Ruoli extra →
+                </Link>
+              </td>
             </tr>
           ))}
         </tbody>
