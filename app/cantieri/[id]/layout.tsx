@@ -25,6 +25,7 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
     { href: `/cantieri/${cantiereId}/persone`, label: "👥 Persone assegnate" },
     { href: `/cantieri/${cantiereId}/documenti`, label: "📄 I miei documenti" },
     { href: `/cantieri/${cantiereId}/imprese`, label: "🏢 Imprese e subappaltatori" },
+    { href: `/cantieri/${cantiereId}/visite`, label: "🪪 Visite ispettive" },
   ];
 
   return (
