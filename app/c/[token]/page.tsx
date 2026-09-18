@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 const RUOLI = [
@@ -15,6 +15,7 @@ const RUOLI = [
 
 export default function PaginaPubblicaCantierePage() {
   const params = useParams();
+  const router = useRouter();
   const token = params.token as string;
 
   const [cantiere, setCantiere] = useState<any>(null);
@@ -35,6 +36,35 @@ export default function PaginaPubblicaCantierePage() {
         .select("id, nome, indirizzo")
         .eq("qr_token", token)
         .maybeSingle();
+
+      if (!data) {
+        setCaricamento(false);
+        return;
+      }
+
+      // Se sei già autenticato e hai accesso a questo cantiere
+      // (autorità di controllo, o già membro/gestore), vai dritto alla scheda
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData?.user) {
+        const { data: profilo } = await supabase
+          .from("profili")
+          .select("autorita_controllo")
+          .eq("id", userData.user.id)
+          .maybeSingle();
+
+        const { data: membro } = await supabase
+          .from("cantiere_membri")
+          .select("id")
+          .eq("cantiere_id", data.id)
+          .eq("profilo_id", userData.user.id)
+          .maybeSingle();
+
+        if (profilo?.autorita_controllo || membro) {
+          router.push(`/cantieri/${data.id}`);
+          return;
+        }
+      }
+
       setCantiere(data);
       setCaricamento(false);
     }
