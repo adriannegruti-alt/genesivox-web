@@ -50,8 +50,13 @@ function generaCodiceAzienda(nomeAzienda: string, dataRiferimento: Date): string
 export default function DashboardPage() {
   const [profilo, setProfilo] = useState<any>(null);
   const [caricamento, setCaricamento] = useState(true);
-  const [generazioneInCorso, setGenerazioneInCorso] = useState(false);
+  const [salvataggioInCorso, setSalvataggioInCorso] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
+  const [messaggio, setMessaggio] = useState<string | null>(null);
+
+  // Campo editabile per inserire manualmente la data in cui il cliente
+  // ha pagato/e' diventato abbonato (finche' non e' collegato Stripe)
+  const [dataAbbonamento, setDataAbbonamento] = useState("");
 
   async function carica() {
     setCaricamento(true);
@@ -63,32 +68,29 @@ export default function DashboardPage() {
 
     const { data } = await supabase
       .from("profili")
-      .select("email, ruolo, impresa, nome_utente, codice_azienda, piani(nome)")
+      .select("email, ruolo, impresa, nome_utente, codice_azienda, data_abbonamento, piani(nome)")
       .eq("id", userData.user.id)
       .single();
 
     setProfilo(data);
+    setDataAbbonamento(data?.data_abbonamento ?? "");
     setCaricamento(false);
 
-    // Se l'azienda ha gia' un nome ma non ha ancora un codice azienda,
-    // lo generiamo una sola volta e lo salviamo (resta fisso da qui in poi).
-    if (data && data.impresa && !data.codice_azienda) {
-      const dataRiferimento = userData.user.created_at
-        ? new Date(userData.user.created_at)
-        : new Date();
-      const nuovoCodice = generaCodiceAzienda(data.impresa, dataRiferimento);
+    // Se abbiamo sia il nome azienda che la data abbonamento, il codice
+    // azienda si genera/aggiorna da solo, in automatico.
+    if (data && data.impresa && data.data_abbonamento) {
+      const dataRiferimento = new Date(data.data_abbonamento);
+      const codiceCalcolato = generaCodiceAzienda(data.impresa, dataRiferimento);
 
-      setGenerazioneInCorso(true);
-      const { error } = await supabase
-        .from("profili")
-        .update({ codice_azienda: nuovoCodice })
-        .eq("id", userData.user.id);
-      setGenerazioneInCorso(false);
+      if (codiceCalcolato !== data.codice_azienda) {
+        const { error } = await supabase
+          .from("profili")
+          .update({ codice_azienda: codiceCalcolato })
+          .eq("id", userData.user.id);
 
-      if (!error) {
-        setProfilo((prev: any) => ({ ...prev, codice_azienda: nuovoCodice }));
-      } else {
-        setErrore(error.message);
+        if (!error) {
+          setProfilo((prev: any) => ({ ...prev, codice_azienda: codiceCalcolato }));
+        }
       }
     }
   }
@@ -96,6 +98,45 @@ export default function DashboardPage() {
   useEffect(() => {
     carica();
   }, []);
+
+  async function salvaDataAbbonamento(e: React.FormEvent) {
+    e.preventDefault();
+    setErrore(null);
+    setMessaggio(null);
+
+    if (!dataAbbonamento) {
+      setErrore("Inserisci una data.");
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) return;
+
+    setSalvataggioInCorso(true);
+
+    const { error } = await supabase
+      .from("profili")
+      .update({ data_abbonamento: dataAbbonamento })
+      .eq("id", userData.user.id);
+
+    if (error) {
+      setErrore(error.message);
+      setSalvataggioInCorso(false);
+      return;
+    }
+
+    // Ricalcola subito il codice azienda con la nuova data
+    if (profilo?.impresa) {
+      const codiceCalcolato = generaCodiceAzienda(profilo.impresa, new Date(dataAbbonamento));
+      await supabase.from("profili").update({ codice_azienda: codiceCalcolato }).eq("id", userData.user.id);
+      setProfilo((prev: any) => ({ ...prev, data_abbonamento: dataAbbonamento, codice_azienda: codiceCalcolato }));
+    } else {
+      setProfilo((prev: any) => ({ ...prev, data_abbonamento: dataAbbonamento }));
+    }
+
+    setMessaggio("Data salvata e codice azienda aggiornato.");
+    setSalvataggioInCorso(false);
+  }
 
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif" }}>
@@ -111,14 +152,39 @@ export default function DashboardPage() {
             Codice azienda:{" "}
             {profilo.codice_azienda ? (
               <strong>{profilo.codice_azienda}</strong>
-            ) : generazioneInCorso ? (
-              "generazione in corso..."
             ) : (
-              "— (imposta il nome azienda nelle impostazioni account)"
+              "— (serve il nome azienda e la data abbonamento qui sotto)"
             )}
           </p>
           <p>Piano attivo: {profilo.piani?.nome ?? "—"}</p>
-          {errore && <p style={{ color: "red" }}>{errore}</p>}
+
+          <div style={{ marginTop: 20, padding: 16, border: "1px solid #ddd", borderRadius: 8 }}>
+            <h3 style={{ marginTop: 0, fontSize: 15 }}>Data abbonamento / pagamento</h3>
+            <p style={{ fontSize: 13, color: "#666", marginTop: 0 }}>
+              Mese e anno in cui il cliente è diventato abbonato: servono per generare il codice
+              azienda. Per ora si inserisce a mano; quando i pagamenti saranno automatici, questa
+              data verrà compilata da sola al momento del pagamento.
+            </p>
+            <form onSubmit={salvaDataAbbonamento} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input
+                type="date"
+                value={dataAbbonamento}
+                onChange={(e) => setDataAbbonamento(e.target.value)}
+                style={{ padding: 8 }}
+              />
+              <button type="submit" disabled={salvataggioInCorso} style={{ padding: "8px 16px" }}>
+                {salvataggioInCorso ? "Salvataggio..." : "Salva"}
+              </button>
+            </form>
+            {!profilo.impresa && (
+              <p style={{ fontSize: 13, color: "#a15c00", marginTop: 8 }}>
+                Manca ancora il nome azienda: inseriscilo in Impostazioni account per completare il
+                codice azienda.
+              </p>
+            )}
+            {errore && <p style={{ color: "red" }}>{errore}</p>}
+            {messaggio && <p style={{ color: "green" }}>{messaggio}</p>}
+          </div>
         </div>
       )}
       {!caricamento && !profilo && <p>Impossibile caricare il profilo.</p>}
