@@ -158,33 +158,35 @@ export default function DashboardPage() {
           </p>
           <p>Piano attivo: {profilo.piani?.nome ?? "—"}</p>
 
-          <div style={{ marginTop: 20, padding: 16, border: "1px solid #ddd", borderRadius: 8 }}>
-            <h3 style={{ marginTop: 0, fontSize: 15 }}>Data abbonamento / pagamento</h3>
-            <p style={{ fontSize: 13, color: "#666", marginTop: 0 }}>
-              Mese e anno in cui il cliente è diventato abbonato: servono per generare il codice
-              azienda. Per ora si inserisce a mano; quando i pagamenti saranno automatici, questa
-              data verrà compilata da sola al momento del pagamento.
-            </p>
-            <form onSubmit={salvaDataAbbonamento} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input
-                type="date"
-                value={dataAbbonamento}
-                onChange={(e) => setDataAbbonamento(e.target.value)}
-                style={{ padding: 8 }}
-              />
-              <button type="submit" disabled={salvataggioInCorso} style={{ padding: "8px 16px" }}>
-                {salvataggioInCorso ? "Salvataggio..." : "Salva"}
-              </button>
-            </form>
-            {!profilo.impresa && (
-              <p style={{ fontSize: 13, color: "#a15c00", marginTop: 8 }}>
-                Manca ancora il nome azienda: inseriscilo in Impostazioni account per completare il
-                codice azienda.
-              </p>
-            )}
-            {errore && <p style={{ color: "red" }}>{errore}</p>}
-            {messaggio && <p style={{ color: "green" }}>{messaggio}</p>}
-          </div>
+          <form
+            onSubmit={salvaDataAbbonamento}
+            style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}
+          >
+            <label style={{ fontSize: 14, color: "#3c4149" }}>Data abbonamento:</label>
+            <input
+              type="date"
+              value={dataAbbonamento}
+              onChange={(e) => setDataAbbonamento(e.target.value)}
+              style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #d0d5dd" }}
+            />
+            <button
+              type="submit"
+              disabled={salvataggioInCorso}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 6,
+                border: "1px solid #d6e6fb",
+                backgroundColor: "#eef4fd",
+                color: "#1a73e8",
+                cursor: "pointer",
+                fontSize: 14,
+              }}
+            >
+              {salvataggioInCorso ? "Salvataggio..." : "Salva"}
+            </button>
+          </form>
+          {errore && <p style={{ color: "red", fontSize: 13 }}>{errore}</p>}
+          {messaggio && <p style={{ color: "green", fontSize: 13 }}>{messaggio}</p>}
         </div>
       )}
       {!caricamento && !profilo && <p>Impossibile caricare il profilo.</p>}
