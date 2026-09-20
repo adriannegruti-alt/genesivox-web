@@ -44,6 +44,11 @@ export default function CantiereDettaglioPage() {
   const [errore, setErrore] = useState<string | null>(null);
   const [messaggio, setMessaggio] = useState<string | null>(null);
 
+  const [modificaId, setModificaId] = useState<string | null>(null);
+  const [ruoloModifica, setRuoloModifica] = useState("");
+  const [nomeImpresaModifica, setNomeImpresaModifica] = useState("");
+  const [attivitaModifica, setAttivitaModifica] = useState("");
+
   // Quando si scrive l'email e si esce dal campo, recupera impresa e attività
   // con cui quella persona si era già registrata (dal suo account o da un
   // altro cantiere), per non doverle reinserire a mano se non serve.
@@ -158,6 +163,51 @@ export default function CantiereDettaglioPage() {
     carica();
   }
 
+  function iniziaModifica(m: Membro) {
+    setModificaId(m.id);
+    setRuoloModifica(m.ruolo);
+    setNomeImpresaModifica(m.nome_impresa ?? "");
+    setAttivitaModifica(m.attivita ?? "");
+  }
+
+  async function salvaModifica(id: string) {
+    const { data, error } = await supabase
+      .from("cantiere_membri")
+      .update({
+        ruolo: ruoloModifica,
+        nome_impresa: nomeImpresaModifica || null,
+        attivita: attivitaModifica || null,
+      })
+      .eq("id", id)
+      .select("id");
+
+    if (error) {
+      alert("Errore nel salvare: " + error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      alert("Non hai i permessi per modificare questa persona in questo cantiere.");
+      return;
+    }
+    setModificaId(null);
+    carica();
+  }
+
+  async function eliminaMembro(id: string, nomeVisualizzato: string) {
+    if (!confirm(`Rimuovere "${nomeVisualizzato}" da questo cantiere? Non avrà più accesso ai suoi dati.`)) return;
+
+    const { data, error } = await supabase.from("cantiere_membri").delete().eq("id", id).select("id");
+    if (error) {
+      alert("Errore nell'eliminare: " + error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      alert("Non hai i permessi per rimuovere questa persona da questo cantiere.");
+      return;
+    }
+    carica();
+  }
+
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 700 }}>
       <h1>Persone assegnate</h1>
@@ -189,21 +239,81 @@ export default function CantiereDettaglioPage() {
           </tr>
         </thead>
         <tbody>
-          {membriApprovati.map((m) => (
-            <tr key={m.id} style={{ borderBottom: "1px solid #eee" }}>
-              <td style={{ padding: 8 }}>{m.profili?.email}</td>
-              <td style={{ padding: 8 }}>
-                {RUOLI.find((r) => r.value === m.ruolo)?.label ?? m.ruolo}
-              </td>
-              <td style={{ padding: 8 }}>{impresaVisualizzata(m)}</td>
-              <td style={{ padding: 8 }}>{m.attivita ?? "—"}</td>
-              <td style={{ padding: 8 }}>
-                <Link href={`/cantieri/${cantiereId}/persone/${m.id}`} style={{ fontSize: 13 }}>
-                  Ruoli extra →
-                </Link>
-              </td>
-            </tr>
-          ))}
+          {membriApprovati.map((m) =>
+            modificaId === m.id ? (
+              <tr key={m.id} style={{ borderBottom: "1px solid #eee", backgroundColor: "#f7fafe" }}>
+                <td style={{ padding: 8 }}>{m.profili?.email}</td>
+                <td style={{ padding: 8 }}>
+                  <select
+                    value={ruoloModifica}
+                    onChange={(e) => setRuoloModifica(e.target.value)}
+                    style={{ padding: 6, width: "100%" }}
+                  >
+                    {RUOLI.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td style={{ padding: 8 }}>
+                  <input
+                    value={nomeImpresaModifica}
+                    onChange={(e) => setNomeImpresaModifica(e.target.value)}
+                    style={{ padding: 6, width: "100%" }}
+                  />
+                </td>
+                <td style={{ padding: 8 }}>
+                  <input
+                    value={attivitaModifica}
+                    onChange={(e) => setAttivitaModifica(e.target.value)}
+                    style={{ padding: 6, width: "100%" }}
+                  />
+                </td>
+                <td style={{ padding: 8, whiteSpace: "nowrap" }}>
+                  <button onClick={() => salvaModifica(m.id)} style={{ padding: "4px 10px", marginRight: 6 }}>
+                    Salva
+                  </button>
+                  <button onClick={() => setModificaId(null)} style={{ padding: "4px 10px" }}>
+                    Annulla
+                  </button>
+                </td>
+              </tr>
+            ) : (
+              <tr key={m.id} style={{ borderBottom: "1px solid #eee" }}>
+                <td style={{ padding: 8 }}>{m.profili?.email}</td>
+                <td style={{ padding: 8 }}>
+                  {RUOLI.find((r) => r.value === m.ruolo)?.label ?? m.ruolo}
+                </td>
+                <td style={{ padding: 8 }}>{impresaVisualizzata(m)}</td>
+                <td style={{ padding: 8 }}>{m.attivita ?? "—"}</td>
+                <td style={{ padding: 8, whiteSpace: "nowrap" }}>
+                  <Link href={`/cantieri/${cantiereId}/persone/${m.id}`} style={{ fontSize: 13, marginRight: 10 }}>
+                    Ruoli extra →
+                  </Link>
+                  <button
+                    onClick={() => iniziaModifica(m)}
+                    style={{ padding: "4px 10px", marginRight: 6, fontSize: 13 }}
+                  >
+                    Modifica
+                  </button>
+                  <button
+                    onClick={() => eliminaMembro(m.id, impresaVisualizzata(m) !== "—" ? impresaVisualizzata(m) : m.profili?.email || "questa persona")}
+                    style={{
+                      padding: "4px 10px",
+                      fontSize: 13,
+                      color: "#c0392b",
+                      border: "1px solid #c0392b",
+                      borderRadius: 4,
+                      background: "none",
+                    }}
+                  >
+                    Elimina
+                  </button>
+                </td>
+              </tr>
+            )
+          )}
         </tbody>
       </table>
 
