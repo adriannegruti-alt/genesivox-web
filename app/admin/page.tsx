@@ -48,6 +48,22 @@ function generaCodiceAzienda(nomeAzienda: string, dataRiferimento: Date): string
 
 type Piano = { id: string; nome: string };
 
+type Richiesta = {
+  id: string;
+  nome: string;
+  cognome: string;
+  impresa: string | null;
+  piva: string | null;
+  codice_fiscale: string | null;
+  indirizzo: string | null;
+  email: string;
+  cellulare: string | null;
+  nome_utente: string | null;
+  parola: string | null;
+  stato: string;
+  creato_il: string;
+};
+
 type Profilo = {
   id: string;
   email: string;
@@ -68,6 +84,7 @@ export default function AdminPage() {
   const [ricerca, setRicerca] = useState("");
   const [salvataggioId, setSalvataggioId] = useState<string | null>(null);
   const [messaggioId, setMessaggioId] = useState<string | null>(null);
+  const [richieste, setRichieste] = useState<Richiesta[]>([]);
 
   async function carica() {
     setCaricamento(true);
@@ -101,7 +118,21 @@ export default function AdminPage() {
       .order("email");
     setProfili(elencoProfili || []);
 
+    const { data: elencoRichieste } = await supabase
+      .from("richieste_account")
+      .select(
+        "id, nome, cognome, impresa, piva, codice_fiscale, indirizzo, email, cellulare, nome_utente, parola, stato, creato_il"
+      )
+      .eq("stato", "in_attesa")
+      .order("creato_il", { ascending: true });
+    setRichieste(elencoRichieste || []);
+
     setCaricamento(false);
+  }
+
+  async function aggiornaStatoRichiesta(id: string, stato: "approvato" | "rifiutato") {
+    await supabase.from("richieste_account").update({ stato }).eq("id", id);
+    setRichieste((prev) => prev.filter((r) => r.id !== id));
   }
 
   useEffect(() => {
@@ -168,6 +199,75 @@ export default function AdminPage() {
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif" }}>
       <h1>Amministrazione clienti</h1>
+
+      <div style={{ marginBottom: 28 }}>
+        <h2 style={{ fontSize: 17, marginBottom: 4 }}>
+          Richieste in attesa di approvazione{richieste.length > 0 ? ` (${richieste.length})` : ""}
+        </h2>
+        <p style={{ color: "#666", fontSize: 13, marginTop: 0 }}>
+          Arrivano dalla pagina pubblica "Crea Account". Per attivarle: copia email e password qui
+          sotto, crea il login su Supabase (Authentication → Add user) con quegli stessi dati, poi
+          premi "Approvata" per toglierla da questo elenco.
+        </p>
+
+        {richieste.length === 0 && <p style={{ color: "#8a8f98", fontSize: 13 }}>Nessuna richiesta in attesa.</p>}
+
+        {richieste.map((r) => (
+          <div
+            key={r.id}
+            style={{
+              border: "1px solid #e1eafb",
+              backgroundColor: "#f7fafe",
+              borderRadius: 8,
+              padding: 14,
+              marginBottom: 10,
+              fontSize: 13,
+            }}
+          >
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, columnGap: 24 }}>
+              <span><strong>Nome:</strong> {r.nome} {r.cognome}</span>
+              <span><strong>Email:</strong> {r.email}</span>
+              <span><strong>Password:</strong> {r.parola || "—"}</span>
+              <span><strong>Impresa:</strong> {r.impresa || "—"}</span>
+              <span><strong>Nome utente:</strong> {r.nome_utente || "—"}</span>
+              <span><strong>P.IVA:</strong> {r.piva || "—"}</span>
+              <span><strong>Cod. fiscale:</strong> {r.codice_fiscale || "—"}</span>
+              <span><strong>Indirizzo:</strong> {r.indirizzo || "—"}</span>
+              <span><strong>Cellulare:</strong> {r.cellulare || "—"}</span>
+            </div>
+            <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+              <button
+                onClick={() => aggiornaStatoRichiesta(r.id, "approvato")}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 6,
+                  border: "1px solid #d6e6fb",
+                  backgroundColor: "#eef4fd",
+                  color: "#1a73e8",
+                  cursor: "pointer",
+                }}
+              >
+                Approvata (login già creato)
+              </button>
+              <button
+                onClick={() => aggiornaStatoRichiesta(r.id, "rifiutato")}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 6,
+                  border: "1px solid #e4e7ec",
+                  backgroundColor: "transparent",
+                  color: "#666",
+                  cursor: "pointer",
+                }}
+              >
+                Rifiuta
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <h2 style={{ fontSize: 17, marginBottom: 4 }}>Account esistenti</h2>
       <p style={{ color: "#666", fontSize: 14 }}>
         Gestisci piano, ruolo, dati azienda e data abbonamento di ogni account. Il codice azienda
         si aggiorna da solo quando salvi, se nome azienda e data abbonamento sono presenti.
