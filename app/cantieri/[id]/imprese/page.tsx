@@ -261,7 +261,7 @@ export default function ImpresePage() {
                     color: "inherit",
                   }}
                 >
-                  <strong>{m.nome_impresa || m.profili?.email}</strong>
+                  <strong>{m.nome_impresa || "Nome azienda non inserito"}</strong>
                   <div style={{ fontSize: 13, color: "#666" }}>{m.profili?.email}</div>
                   <div style={{ fontSize: 12, color: "#1a73e8", marginTop: 2 }}>{ruoliDiMembro(m).join(", ")}</div>
                 </Link>
