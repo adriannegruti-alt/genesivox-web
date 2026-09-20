@@ -13,7 +13,11 @@ export default function CreaAccountPage() {
     indirizzo: "",
     email: "",
     cellulare: "",
+    nomeUtente: "",
+    parola: "",
+    confermaParola: "",
   });
+  const [nomeUtenteModificatoAMano, setNomeUtenteModificatoAMano] = useState(false);
   const [consensoPrivacy, setConsensoPrivacy] = useState(false);
   const [consensoAltro, setConsensoAltro] = useState(false);
   const [inviato, setInviato] = useState(false);
@@ -21,7 +25,17 @@ export default function CreaAccountPage() {
   const [invioInCorso, setInvioInCorso] = useState(false);
 
   function aggiorna(campo: string, valore: string) {
-    setForm((f) => ({ ...f, [campo]: valore }));
+    setForm((f) => {
+      const nuovo = { ...f, [campo]: valore };
+      // Auto-compila il nome utente dall'impresa, finché l'utente non lo modifica a mano
+      if (campo === "impresa" && !nomeUtenteModificatoAMano) {
+        nuovo.nomeUtente = valore;
+      }
+      if (campo === "nomeUtente") {
+        setNomeUtenteModificatoAMano(true);
+      }
+      return nuovo;
+    });
   }
 
   async function invia(e: React.FormEvent) {
@@ -30,6 +44,16 @@ export default function CreaAccountPage() {
 
     if (!consensoPrivacy) {
       setErrore("Devi accettare il trattamento dei dati personali per proseguire.");
+      return;
+    }
+
+    if (form.parola.length < 6) {
+      setErrore("La password deve avere almeno 6 caratteri.");
+      return;
+    }
+
+    if (form.parola !== form.confermaParola) {
+      setErrore("Le due password non coincidono.");
       return;
     }
 
@@ -44,6 +68,8 @@ export default function CreaAccountPage() {
       indirizzo: form.indirizzo || null,
       email: form.email,
       cellulare: form.cellulare || null,
+      nome_utente: form.nomeUtente || form.impresa || null,
+      parola: form.parola,
       consenso_privacy: consensoPrivacy,
       consenso_altro: consensoAltro,
     });
@@ -60,15 +86,20 @@ export default function CreaAccountPage() {
 
   if (inviato) {
     return (
-      <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 500 }}>
+      <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 500, margin: "0 auto" }}>
         <h1>Richiesta inviata</h1>
         <p>La richiesta di creazione account è stata registrata ed è in attesa di approvazione.</p>
+        <p style={{ marginTop: 20, fontSize: 14 }}>
+          <a href="/login" style={{ color: "#1a73e8" }}>
+            Torna al login
+          </a>
+        </p>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 500 }}>
+    <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 500, margin: "0 auto" }}>
       <h1>Crea Account</h1>
       <p style={{ color: "#666" }}>Compila i dati per richiedere la creazione di un nuovo account, soggetto ad approvazione.</p>
 
@@ -82,6 +113,9 @@ export default function CreaAccountPage() {
           { campo: "indirizzo", label: "Indirizzo" },
           { campo: "email", label: "Email", obbligatorio: true, tipo: "email" },
           { campo: "cellulare", label: "Cellulare" },
+          { campo: "nomeUtente", label: "Nome utente (auto da impresa, modificabile)", obbligatorio: true },
+          { campo: "parola", label: "Password", obbligatorio: true, tipo: "password" },
+          { campo: "confermaParola", label: "Conferma password", obbligatorio: true, tipo: "password" },
         ].map((f) => (
           <div key={f.campo} style={{ marginBottom: 10 }}>
             <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>{f.label}</label>
@@ -125,6 +159,13 @@ export default function CreaAccountPage() {
           {invioInCorso ? "Invio in corso..." : "Invia richiesta"}
         </button>
       </form>
+
+      <p style={{ marginTop: 20, fontSize: 14 }}>
+        Hai già un account?{" "}
+        <a href="/login" style={{ color: "#1a73e8" }}>
+          Accedi
+        </a>
+      </p>
     </div>
   );
 }
