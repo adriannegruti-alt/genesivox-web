@@ -22,6 +22,7 @@ const RUOLI = [
 const DOCUMENTO_RICHIESTO_PER_RUOLO: Record<string, string> = {
   preposto: "Nomina a Preposto",
   capocantiere: "Nomina Capocantiere",
+  rspp: "Nomina RSPP",
 };
 
 const ATTIVITA = [
