@@ -60,6 +60,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [cantieri, setCantieri] = useState<Cantiere[]>([]);
   const [cantieriArchiviati, setCantieriArchiviati] = useState<Cantiere[]>([]);
 
+  // Solo per l'admin: tendina a due livelli, Utenti -> Cantieri di quell'utente
+  type UtenteAdmin = { id: string; email: string; impresa: string | null; nome_utente: string | null };
+  const [utentiAdmin, setUtentiAdmin] = useState<UtenteAdmin[]>([]);
+  const [utenteSelezionato, setUtenteSelezionato] = useState<string | null>(null);
+  const [cantieriUtenteSelezionato, setCantieriUtenteSelezionato] = useState<Cantiere[]>([]);
+  const [colonnaUtentiEspansa, setColonnaUtentiEspansa] = useState(false);
+
   // Pagine pubbliche: niente barra/sidebar
   const paginaPubblica =
     pathname?.startsWith("/login") ||
@@ -87,12 +94,35 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   async function apriMenuCantieri() {
     setMenuAperto("cantieri");
+
+    if (isAdmin) {
+      setUtenteSelezionato(null);
+      setCantieriUtenteSelezionato([]);
+      const { data } = await supabase
+        .from("profili")
+        .select("id, email, impresa, nome_utente")
+        .order("email");
+      setUtentiAdmin(data || []);
+      return;
+    }
+
     const { data } = await supabase
       .from("cantieri")
       .select("id, nome")
       .eq("archiviato", false)
       .order("creato_il", { ascending: false });
     setCantieri(data || []);
+  }
+
+  async function selezionaUtenteAdmin(id: string) {
+    setUtenteSelezionato(id);
+    const { data } = await supabase
+      .from("cantieri")
+      .select("id, nome")
+      .eq("creato_da", id)
+      .eq("archiviato", false)
+      .order("creato_il", { ascending: false });
+    setCantieriUtenteSelezionato(data || []);
   }
 
   async function apriMenuArchivio() {
@@ -228,7 +258,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div
             className="shell-sidebar"
             style={{
-              width: 260,
+              width: menuAperto === "cantieri" && isAdmin ? 420 : 260,
               flexShrink: 0,
               borderRight: `1px solid ${COLORE_SIDEBAR_BORDO}`,
               padding: 16,
@@ -236,7 +266,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               backgroundColor: COLORE_SIDEBAR_SFONDO,
             }}
           >
-            {menuAperto === "cantieri" && (
+            {menuAperto === "cantieri" && !isAdmin && (
               <div>
                 <Link
                   href="/cantieri"
@@ -271,6 +301,114 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   </Link>
                 ))}
                 {cantieri.length === 0 && <p style={{ color: "#8a8f98", fontSize: 13 }}>Nessun cantiere ancora.</p>}
+              </div>
+            )}
+
+            {menuAperto === "cantieri" && isAdmin && (
+              <div style={{ display: "flex", height: "100%" }}>
+                {/* Colonna 1: tutti gli utenti. Si riduce a sole iniziali quando
+                    ne hai scelto uno, e si riapre passandoci sopra col mouse. */}
+                <div
+                  onMouseEnter={() => setColonnaUtentiEspansa(true)}
+                  onMouseLeave={() => setColonnaUtentiEspansa(false)}
+                  style={{
+                    width: utenteSelezionato && !colonnaUtentiEspansa ? 40 : 190,
+                    flexShrink: 0,
+                    transition: "width .15s ease",
+                    overflow: "hidden",
+                    borderRight: `1px solid ${COLORE_SIDEBAR_BORDO}`,
+                    paddingRight: 8,
+                    marginRight: 8,
+                  }}
+                >
+                  <p style={{ fontSize: 11, color: "#8a8f98", margin: "0 0 8px", whiteSpace: "nowrap" }}>
+                    {utenteSelezionato && !colonnaUtentiEspansa ? "" : "UTENTI"}
+                  </p>
+                  {utentiAdmin.map((u) => {
+                    const selezionato = utenteSelezionato === u.id;
+                    const etichetta = u.impresa || u.nome_utente || u.email;
+                    const compatto = !!utenteSelezionato && !colonnaUtentiEspansa;
+                    return (
+                      <div
+                        key={u.id}
+                        onMouseEnter={() => selezionaUtenteAdmin(u.id)}
+                        title={etichetta}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: compatto ? "5px 2px" : "7px 8px",
+                          marginBottom: 3,
+                          borderRadius: 6,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                          backgroundColor: selezionato ? COLORE_BRAND_SFONDO : "transparent",
+                          border: selezionato ? `1px solid ${COLORE_BRAND_BORDO}` : "1px solid transparent",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: "50%",
+                            flexShrink: 0,
+                            backgroundColor: selezionato ? COLORE_BRAND : "#c7d7ef",
+                            color: "#fff",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {etichetta.charAt(0).toUpperCase()}
+                        </span>
+                        {!compatto && (
+                          <span
+                            style={{
+                              fontSize: 13,
+                              color: COLORE_TESTO,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {etichetta}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {utentiAdmin.length === 0 && !utenteSelezionato && (
+                    <p style={{ color: "#8a8f98", fontSize: 12 }}>Nessun utente.</p>
+                  )}
+                </div>
+
+                {/* Colonna 2: cantieri dell'utente scelto a sinistra */}
+                {utenteSelezionato && (
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 11, color: "#8a8f98", margin: "0 0 8px" }}>SUOI CANTIERI</p>
+                    {cantieriUtenteSelezionato.map((c) => (
+                      <Link
+                        key={c.id}
+                        href={`/cantieri/${c.id}`}
+                        onClick={() => setMenuAperto(null)}
+                        style={{
+                          display: "block",
+                          padding: "9px 10px",
+                          borderRadius: 6,
+                          textDecoration: "none",
+                          color: COLORE_TESTO,
+                          borderBottom: `1px solid ${COLORE_SIDEBAR_DIVISORE}`,
+                        }}
+                      >
+                        {c.nome}
+                      </Link>
+                    ))}
+                    {cantieriUtenteSelezionato.length === 0 && (
+                      <p style={{ color: "#8a8f98", fontSize: 13 }}>Nessun cantiere per questo utente.</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
