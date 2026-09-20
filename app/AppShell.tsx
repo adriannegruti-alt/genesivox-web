@@ -61,7 +61,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [cantieriArchiviati, setCantieriArchiviati] = useState<Cantiere[]>([]);
 
   // Pagine pubbliche: niente barra/sidebar
-  const paginaPubblica = pathname?.startsWith("/login") || pathname?.startsWith("/c/");
+  const paginaPubblica =
+    pathname?.startsWith("/login") ||
+    pathname?.startsWith("/c/") ||
+    pathname?.startsWith("/reimposta-password");
 
   useEffect(() => {
     async function carica() {
