@@ -49,11 +49,10 @@ export default function CantiereDettaglioPage() {
   async function autocompletaDaEmail() {
     if (!emailNuovo) return;
 
-    const { data: profilo } = await supabase
-      .from("profili")
-      .select("id, impresa, attivita_base")
-      .ilike("email", emailNuovo.trim())
-      .maybeSingle();
+    const { data: risultati } = await supabase.rpc("cerca_profilo_per_email", {
+      email_ricerca: emailNuovo.trim(),
+    });
+    const profilo = risultati?.[0];
 
     if (!profilo) return;
 
@@ -114,11 +113,10 @@ export default function CantiereDettaglioPage() {
     setMessaggio(null);
 
     // Cerca se esiste già un profilo con questa email (ignora maiuscole/minuscole e spazi)
-    const { data: profiloEsistente } = await supabase
-      .from("profili")
-      .select("id")
-      .ilike("email", emailNuovo.trim())
-      .maybeSingle();
+    const { data: risultatiRicerca } = await supabase.rpc("cerca_profilo_per_email", {
+      email_ricerca: emailNuovo.trim(),
+    });
+    const profiloEsistente = risultatiRicerca?.[0];
 
     if (!profiloEsistente) {
       setErrore(
