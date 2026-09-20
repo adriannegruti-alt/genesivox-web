@@ -3,62 +3,287 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
+const RUOLI = [
+  "admin",
+  "committente",
+  "cse_csp",
+  "rspp",
+  "capocantiere",
+  "impresa",
+  "lavoratore",
+  "asl_ispettorato",
+];
+
+const SIGLE_SOCIETARIE = [
+  "S\\.?R\\.?L\\.?S\\.?",
+  "S\\.?R\\.?L\\.?",
+  "S\\.?A\\.?S\\.?",
+  "S\\.?N\\.?C\\.?",
+  "S\\.?P\\.?A\\.?",
+  "S\\.?S\\.?D\\.?",
+  "S\\.?S\\.?",
+  "S\\.?A\\.?",
+  "SOCIETA['’ ]?\\s*COOPERATIVA",
+  "SOC\\.?\\s*COOP\\.?",
+  "COOPERATIVA",
+  "COOP\\.?",
+  "DITTA\\s+INDIVIDUALE",
+  "IMPRESA\\s+INDIVIDUALE",
+];
+
+function generaCodiceAzienda(nomeAzienda: string, dataRiferimento: Date): string {
+  let nome = nomeAzienda.toUpperCase();
+  nome = nome.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  for (const sigla of SIGLE_SOCIETARIE) {
+    const pattern = new RegExp("\\b" + sigla + "\\b", "g");
+    nome = nome.replace(pattern, " ");
+  }
+  nome = nome.replace(/[^A-Z0-9]/g, "");
+  if (nome.length > 14) nome = nome.slice(0, 14);
+  if (!nome) nome = "AZIENDA";
+  const mese = String(dataRiferimento.getMonth() + 1).padStart(2, "0");
+  const anno = dataRiferimento.getFullYear();
+  return `${nome}${mese}${anno}`;
+}
+
+type Piano = { id: string; nome: string };
+
 type Profilo = {
   id: string;
   email: string;
   ruolo: string;
-  attivo: boolean;
-  creato_il: string;
-  piani: { nome: string } | null;
+  impresa: string | null;
+  nome_utente: string | null;
+  codice_azienda: string | null;
+  data_abbonamento: string | null;
+  piano_id: string | null;
+  autorita_controllo: boolean | null;
 };
 
 export default function AdminPage() {
-  const [utenti, setUtenti] = useState<Profilo[]>([]);
   const [caricamento, setCaricamento] = useState(true);
+  const [autorizzato, setAutorizzato] = useState(false);
+  const [piani, setPiani] = useState<Piano[]>([]);
+  const [profili, setProfili] = useState<Profilo[]>([]);
+  const [ricerca, setRicerca] = useState("");
+  const [salvataggioId, setSalvataggioId] = useState<string | null>(null);
+  const [messaggioId, setMessaggioId] = useState<string | null>(null);
+
+  async function carica() {
+    setCaricamento(true);
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) {
+      setCaricamento(false);
+      return;
+    }
+
+    const { data: mioProfilo } = await supabase
+      .from("profili")
+      .select("ruolo")
+      .eq("id", userData.user.id)
+      .maybeSingle();
+
+    if (mioProfilo?.ruolo !== "admin") {
+      setAutorizzato(false);
+      setCaricamento(false);
+      return;
+    }
+    setAutorizzato(true);
+
+    const { data: elencoPiani } = await supabase.from("piani").select("id, nome").order("prezzo_centesimi");
+    setPiani(elencoPiani || []);
+
+    const { data: elencoProfili } = await supabase
+      .from("profili")
+      .select(
+        "id, email, ruolo, impresa, nome_utente, codice_azienda, data_abbonamento, piano_id, autorita_controllo"
+      )
+      .order("email");
+    setProfili(elencoProfili || []);
+
+    setCaricamento(false);
+  }
 
   useEffect(() => {
-    async function carica() {
-      const { data, error } = await supabase
-        .from("profili")
-        .select("id, email, ruolo, attivo, creato_il, piani(nome)")
-        .order("creato_il", { ascending: false });
-
-      if (!error && data) setUtenti(data as unknown as Profilo[]);
-      setCaricamento(false);
-    }
     carica();
   }, []);
 
+  function aggiornaCampo(id: string, campo: keyof Profilo, valore: any) {
+    setProfili((prev) => prev.map((p) => (p.id === id ? { ...p, [campo]: valore } : p)));
+  }
+
+  async function salvaRiga(profilo: Profilo) {
+    setSalvataggioId(profilo.id);
+    setMessaggioId(null);
+
+    let codiceAzienda = profilo.codice_azienda;
+    if (profilo.impresa && profilo.data_abbonamento) {
+      codiceAzienda = generaCodiceAzienda(profilo.impresa, new Date(profilo.data_abbonamento));
+    }
+
+    const { error } = await supabase
+      .from("profili")
+      .update({
+        ruolo: profilo.ruolo,
+        impresa: profilo.impresa,
+        nome_utente: profilo.nome_utente,
+        piano_id: profilo.piano_id,
+        data_abbonamento: profilo.data_abbonamento,
+        autorita_controllo: profilo.autorita_controllo,
+        codice_azienda: codiceAzienda,
+      })
+      .eq("id", profilo.id);
+
+    setSalvataggioId(null);
+
+    if (error) {
+      setMessaggioId(`errore:${profilo.id}:${error.message}`);
+      return;
+    }
+
+    setProfili((prev) => prev.map((p) => (p.id === profilo.id ? { ...p, codice_azienda: codiceAzienda } : p)));
+    setMessaggioId(`ok:${profilo.id}`);
+  }
+
+  const profiliFiltrati = profili.filter((p) => {
+    const testo = ricerca.toLowerCase();
+    return (
+      p.email?.toLowerCase().includes(testo) ||
+      p.impresa?.toLowerCase().includes(testo) ||
+      p.nome_utente?.toLowerCase().includes(testo)
+    );
+  });
+
   if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
+
+  if (!autorizzato) {
+    return (
+      <div style={{ padding: 24 }}>
+        <h1>Accesso non consentito</h1>
+        <p>Questa pagina è riservata agli amministratori.</p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif" }}>
-      <h1>Dashboard Admin — Utenti</h1>
-      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 16 }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-            <th style={{ padding: 8 }}>Email</th>
-            <th style={{ padding: 8 }}>Ruolo</th>
-            <th style={{ padding: 8 }}>Piano</th>
-            <th style={{ padding: 8 }}>Attivo</th>
-            <th style={{ padding: 8 }}>Registrato il</th>
-          </tr>
-        </thead>
-        <tbody>
-          {utenti.map((u) => (
-            <tr key={u.id} style={{ borderBottom: "1px solid #eee" }}>
-              <td style={{ padding: 8 }}>{u.email}</td>
-              <td style={{ padding: 8 }}>{u.ruolo}</td>
-              <td style={{ padding: 8 }}>{u.piani?.nome ?? "—"}</td>
-              <td style={{ padding: 8 }}>{u.attivo ? "Sì" : "No"}</td>
-              <td style={{ padding: 8 }}>
-                {new Date(u.creato_il).toLocaleDateString("it-IT")}
-              </td>
+      <h1>Amministrazione clienti</h1>
+      <p style={{ color: "#666", fontSize: 14 }}>
+        Gestisci piano, ruolo, dati azienda e data abbonamento di ogni account. Il codice azienda
+        si aggiorna da solo quando salvi, se nome azienda e data abbonamento sono presenti.
+      </p>
+
+      <input
+        placeholder="Cerca per email o nome azienda..."
+        value={ricerca}
+        onChange={(e) => setRicerca(e.target.value)}
+        style={{ padding: 8, width: "100%", maxWidth: 400, marginBottom: 16, borderRadius: 6, border: "1px solid #d0d5dd" }}
+      />
+
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+          <thead>
+            <tr style={{ textAlign: "left", borderBottom: "2px solid #e4e7ec" }}>
+              <th style={{ padding: 8 }}>Email</th>
+              <th style={{ padding: 8 }}>Nome azienda</th>
+              <th style={{ padding: 8 }}>Nome utente</th>
+              <th style={{ padding: 8 }}>Ruolo</th>
+              <th style={{ padding: 8 }}>Piano</th>
+              <th style={{ padding: 8 }}>Data abbonamento</th>
+              <th style={{ padding: 8 }}>Codice azienda</th>
+              <th style={{ padding: 8 }}>Autorità controllo</th>
+              <th style={{ padding: 8 }}></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      {utenti.length === 0 && <p>Nessun utente ancora registrato.</p>}
+          </thead>
+          <tbody>
+            {profiliFiltrati.map((p) => (
+              <tr key={p.id} style={{ borderBottom: "1px solid #eaf1fc" }}>
+                <td style={{ padding: 8 }}>{p.email}</td>
+                <td style={{ padding: 8 }}>
+                  <input
+                    value={p.impresa ?? ""}
+                    onChange={(e) => aggiornaCampo(p.id, "impresa", e.target.value)}
+                    style={{ padding: 6, width: 140, borderRadius: 6, border: "1px solid #d0d5dd" }}
+                  />
+                </td>
+                <td style={{ padding: 8 }}>
+                  <input
+                    value={p.nome_utente ?? ""}
+                    onChange={(e) => aggiornaCampo(p.id, "nome_utente", e.target.value)}
+                    style={{ padding: 6, width: 120, borderRadius: 6, border: "1px solid #d0d5dd" }}
+                  />
+                </td>
+                <td style={{ padding: 8 }}>
+                  <select
+                    value={p.ruolo}
+                    onChange={(e) => aggiornaCampo(p.id, "ruolo", e.target.value)}
+                    style={{ padding: 6, borderRadius: 6, border: "1px solid #d0d5dd" }}
+                  >
+                    {RUOLI.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td style={{ padding: 8 }}>
+                  <select
+                    value={p.piano_id ?? ""}
+                    onChange={(e) => aggiornaCampo(p.id, "piano_id", e.target.value || null)}
+                    style={{ padding: 6, borderRadius: 6, border: "1px solid #d0d5dd" }}
+                  >
+                    <option value="">—</option>
+                    {piani.map((pi) => (
+                      <option key={pi.id} value={pi.id}>
+                        {pi.nome}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td style={{ padding: 8 }}>
+                  <input
+                    type="date"
+                    value={p.data_abbonamento ?? ""}
+                    onChange={(e) => aggiornaCampo(p.id, "data_abbonamento", e.target.value || null)}
+                    style={{ padding: 6, borderRadius: 6, border: "1px solid #d0d5dd" }}
+                  />
+                </td>
+                <td style={{ padding: 8, fontWeight: 600 }}>{p.codice_azienda ?? "—"}</td>
+                <td style={{ padding: 8, textAlign: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={!!p.autorita_controllo}
+                    onChange={(e) => aggiornaCampo(p.id, "autorita_controllo", e.target.checked)}
+                  />
+                </td>
+                <td style={{ padding: 8 }}>
+                  <button
+                    onClick={() => salvaRiga(p)}
+                    disabled={salvataggioId === p.id}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 6,
+                      border: "1px solid #d6e6fb",
+                      backgroundColor: "#eef4fd",
+                      color: "#1a73e8",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {salvataggioId === p.id ? "..." : "Salva"}
+                  </button>
+                  {messaggioId === `ok:${p.id}` && <span style={{ color: "green", marginLeft: 6 }}>✓</span>}
+                  {messaggioId?.startsWith(`errore:${p.id}`) && (
+                    <span style={{ color: "red", marginLeft: 6, fontSize: 12 }}>
+                      {messaggioId.split(":").slice(2).join(":")}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {profiliFiltrati.length === 0 && <p style={{ color: "#666", marginTop: 16 }}>Nessun account trovato.</p>}
+      </div>
     </div>
   );
 }
