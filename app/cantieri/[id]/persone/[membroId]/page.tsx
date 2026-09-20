@@ -10,10 +10,19 @@ const RUOLI = [
   { value: "cse_csp", label: "CSE / CSP" },
   { value: "rspp", label: "RSPP" },
   { value: "capocantiere", label: "Capocantiere" },
+  { value: "preposto", label: "Preposto" },
   { value: "impresa", label: "Impresa" },
   { value: "lavoratore", label: "Lavoratore" },
   { value: "asl_ispettorato", label: "ASL / Ispettorato" },
 ];
+
+// Ruoli che richiedono una nomina/accordo firmato già caricato prima di
+// poter essere assegnati: il nome deve corrispondere esattamente a quello
+// nel catalogo documenti (tabella tipi_documento).
+const DOCUMENTO_RICHIESTO_PER_RUOLO: Record<string, string> = {
+  preposto: "Nomina a Preposto",
+  capocantiere: "Nomina Capocantiere",
+};
 
 const ATTIVITA = [
   "Comitente", "Servizi per la sicurezza", "Noleggio attrezzature edili", "Impresa edile",
@@ -43,7 +52,7 @@ export default function RuoliAttivitaPage() {
   async function carica() {
     const { data: m } = await supabase
       .from("cantiere_membri")
-      .select("id, ruolo, attivita, profili!cantiere_membri_profilo_id_fkey(email)")
+      .select("id, profilo_id, ruolo, attivita, profili!cantiere_membri_profilo_id_fkey(email)")
       .eq("id", membroId)
       .single();
     setMembro(m);
@@ -63,6 +72,29 @@ export default function RuoliAttivitaPage() {
 
   async function toggleRuolo(ruolo: string, attivo: boolean) {
     setErrore(null);
+
+    if (!attivo) {
+      // Si sta per ACCENDERE questo ruolo: se richiede una nomina/accordo,
+      // verifica che il documento sia già stato caricato per questa persona.
+      const documentoRichiesto = DOCUMENTO_RICHIESTO_PER_RUOLO[ruolo];
+      if (documentoRichiesto) {
+        const { count } = await supabase
+          .from("documenti")
+          .select("id", { count: "exact", head: true })
+          .eq("cantiere_id", cantiereId)
+          .eq("profilo_id", membro.profilo_id)
+          .eq("tipo_documento", documentoRichiesto);
+
+        if (!count) {
+          const etichettaRuolo = RUOLI.find((r) => r.value === ruolo)?.label ?? ruolo;
+          alert(
+            `Per assegnare il ruolo "${etichettaRuolo}" devi prima caricare il documento "${documentoRichiesto}" (nomina/accordo firmato dall'impresa) nella scheda documenti di questa persona.`
+          );
+          return;
+        }
+      }
+    }
+
     if (attivo) {
       const { error } = await supabase.from("membro_ruoli").delete().eq("membro_id", membroId).eq("ruolo", ruolo);
       if (error) return setErrore(error.message);
@@ -99,14 +131,20 @@ export default function RuoliAttivitaPage() {
       {errore && <p style={{ color: "red" }}>{errore}</p>}
 
       <h3>Ruoli aggiuntivi</h3>
-      <p style={{ fontSize: 13, color: "#666" }}>Es. chi si occupa di sicurezza spesso fa anche direzione lavori.</p>
+      <p style={{ fontSize: 13, color: "#666" }}>
+        Es. chi si occupa di sicurezza spesso fa anche direzione lavori. Alcuni ruoli (Preposto,
+        Capocantiere) richiedono che la nomina firmata dall'impresa sia già caricata nella scheda
+        documenti di questa persona.
+      </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 24 }}>
         {RUOLI.filter((r) => r.value !== membro.ruolo).map((r) => {
           const attivo = ruoliExtra.includes(r.value);
+          const richiedeDocumento = !!DOCUMENTO_RICHIESTO_PER_RUOLO[r.value];
           return (
             <button
               key={r.value}
               onClick={() => toggleRuolo(r.value, attivo)}
+              title={richiedeDocumento ? `Richiede: ${DOCUMENTO_RICHIESTO_PER_RUOLO[r.value]}` : undefined}
               style={{
                 padding: "6px 12px",
                 borderRadius: 16,
@@ -119,6 +157,7 @@ export default function RuoliAttivitaPage() {
             >
               {attivo ? "✓ " : "+ "}
               {r.label}
+              {richiedeDocumento && !attivo && " 🔒"}
             </button>
           );
         })}
