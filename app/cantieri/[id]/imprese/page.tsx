@@ -55,6 +55,7 @@ export default function ImpresePage() {
 
   const [membri, setMembri] = useState<Membro[]>([]);
   const [attivitaExtraPerMembro, setAttivitaExtraPerMembro] = useState<Record<string, string[]>>({});
+  const [ruoliExtraPerMembro, setRuoliExtraPerMembro] = useState<Record<string, string[]>>({});
   const [attivitaSelezionata, setAttivitaSelezionata] = useState<string | null>(null);
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
@@ -80,16 +81,32 @@ export default function ImpresePage() {
     const membriCaricati = (m as unknown as Membro[]) || [];
     setMembri(membriCaricati);
 
-    // Carica le attività extra di tutti i membri, in un'unica query
+    // Carica attività extra e ruoli extra di tutti i membri, in due query uniche
+    // (invece che una per persona), cosi' la lista si compila da sola con tutto
+    // quello che e' stato assegnato dalla pagina "Ruoli extra".
     const idMembri = membriCaricati.map((x) => x.id);
     if (idMembri.length > 0) {
-      const { data: extra } = await supabase.from("membro_attivita").select("membro_id, attivita").in("membro_id", idMembri);
-      const mappa: Record<string, string[]> = {};
-      (extra || []).forEach((e) => {
-        if (!mappa[e.membro_id]) mappa[e.membro_id] = [];
-        mappa[e.membro_id].push(e.attivita);
+      const { data: extraAttivita } = await supabase
+        .from("membro_attivita")
+        .select("membro_id, attivita")
+        .in("membro_id", idMembri);
+      const mappaAttivita: Record<string, string[]> = {};
+      (extraAttivita || []).forEach((e) => {
+        if (!mappaAttivita[e.membro_id]) mappaAttivita[e.membro_id] = [];
+        mappaAttivita[e.membro_id].push(e.attivita);
       });
-      setAttivitaExtraPerMembro(mappa);
+      setAttivitaExtraPerMembro(mappaAttivita);
+
+      const { data: extraRuoli } = await supabase
+        .from("membro_ruoli")
+        .select("membro_id, ruolo")
+        .in("membro_id", idMembri);
+      const mappaRuoli: Record<string, string[]> = {};
+      (extraRuoli || []).forEach((r) => {
+        if (!mappaRuoli[r.membro_id]) mappaRuoli[r.membro_id] = [];
+        mappaRuoli[r.membro_id].push(r.ruolo);
+      });
+      setRuoliExtraPerMembro(mappaRuoli);
     }
 
     setCaricamento(false);
@@ -146,6 +163,11 @@ export default function ImpresePage() {
   function attivitaDiMembro(m: Membro): string[] {
     const extra = attivitaExtraPerMembro[m.id] || [];
     return m.attivita ? [m.attivita, ...extra] : extra;
+  }
+
+  function ruoliDiMembro(m: Membro): string[] {
+    const extra = ruoliExtraPerMembro[m.id] || [];
+    return Array.from(new Set([m.ruolo, ...extra]));
   }
 
   const attivitaConImprese = new Set(membri.flatMap((m) => attivitaDiMembro(m)));
@@ -241,6 +263,7 @@ export default function ImpresePage() {
                 >
                   <strong>{m.nome_impresa || m.profili?.email}</strong>
                   <div style={{ fontSize: 13, color: "#666" }}>{m.profili?.email}</div>
+                  <div style={{ fontSize: 12, color: "#1a73e8", marginTop: 2 }}>{ruoliDiMembro(m).join(", ")}</div>
                 </Link>
               ))}
               {impreseAttivitaSelezionata.length === 0 && !mostraForm && (
