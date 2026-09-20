@@ -10,6 +10,7 @@ const RUOLI = [
   { value: "cse_csp", label: "CSE / CSP" },
   { value: "rspp", label: "RSPP" },
   { value: "capocantiere", label: "Capocantiere" },
+  { value: "preposto", label: "Preposto" },
   { value: "impresa", label: "Impresa" },
   { value: "lavoratore", label: "Lavoratore" },
   { value: "asl_ispettorato", label: "ASL / Ispettorato" },
