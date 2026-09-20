@@ -87,7 +87,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   async function apriMenuCantieri() {
     setMenuAperto("cantieri");
-    const { data } = await supabase.from("cantieri").select("id, nome").order("creato_il", { ascending: false });
+    const { data } = await supabase
+      .from("cantieri")
+      .select("id, nome")
+      .eq("archiviato", false)
+      .order("creato_il", { ascending: false });
     setCantieri(data || []);
   }
 
