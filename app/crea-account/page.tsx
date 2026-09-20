@@ -4,6 +4,8 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function CreaAccountPage() {
+  const [isLavoratore, setIsLavoratore] = useState(false);
+
   const [form, setForm] = useState({
     nome: "",
     cognome: "",
@@ -22,6 +24,7 @@ export default function CreaAccountPage() {
   const [consensoPrivacy, setConsensoPrivacy] = useState(false);
   const [consensoAltro, setConsensoAltro] = useState(false);
   const [inviato, setInviato] = useState(false);
+  const [lavoratoreCreatoSubito, setLavoratoreCreatoSubito] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
   const [invioInCorso, setInvioInCorso] = useState(false);
 
@@ -60,6 +63,36 @@ export default function CreaAccountPage() {
 
     setInvioInCorso(true);
 
+    if (isLavoratore) {
+      // Lavoratore: account gratuito creato subito, nessuna attesa di approvazione.
+      const risposta = await fetch("/api/crea-lavoratore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: form.email,
+          password: form.parola,
+          nome: form.nome,
+          cognome: form.cognome,
+          nomeUtente: form.nomeUtente || null,
+          impresa: form.impresa || null,
+          attivita: form.attivita || null,
+        }),
+      });
+
+      const risultato = await risposta.json();
+      setInvioInCorso(false);
+
+      if (!risposta.ok) {
+        setErrore(risultato.error || "Impossibile creare l'account.");
+        return;
+      }
+
+      setLavoratoreCreatoSubito(true);
+      setInviato(true);
+      return;
+    }
+
+    // Impresa / altri ruoli: resta una richiesta soggetta ad approvazione dell'amministratore.
     const { error } = await supabase.from("richieste_account").insert({
       nome: form.nome,
       cognome: form.cognome,
@@ -89,37 +122,87 @@ export default function CreaAccountPage() {
   if (inviato) {
     return (
       <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 500, margin: "0 auto" }}>
-        <h1>Richiesta inviata</h1>
-        <p>La richiesta di creazione account è stata registrata ed è in attesa di approvazione.</p>
+        {lavoratoreCreatoSubito ? (
+          <>
+            <h1>Account creato</h1>
+            <p>Il tuo account è pronto: puoi accedere subito con l'email e la password che hai scelto.</p>
+          </>
+        ) : (
+          <>
+            <h1>Richiesta inviata</h1>
+            <p>La richiesta di creazione account è stata registrata ed è in attesa di approvazione.</p>
+          </>
+        )}
         <p style={{ marginTop: 20, fontSize: 14 }}>
           <a href="/login" style={{ color: "#1a73e8" }}>
-            Torna al login
+            {lavoratoreCreatoSubito ? "Vai al login" : "Torna al login"}
           </a>
         </p>
       </div>
     );
   }
 
+  const campiDaMostrare = isLavoratore
+    ? [
+        { campo: "nome", label: "Nome", obbligatorio: true },
+        { campo: "cognome", label: "Cognome", obbligatorio: true },
+        { campo: "impresa", label: "Impresa per cui lavori (facoltativo)" },
+        { campo: "attivita", label: "Attività (es. idraulico, elettricista, muratore)" },
+        { campo: "email", label: "Email", obbligatorio: true, tipo: "email" },
+        { campo: "cellulare", label: "Cellulare" },
+        { campo: "nomeUtente", label: "Nome utente (modificabile)", obbligatorio: true },
+        { campo: "parola", label: "Password", obbligatorio: true, tipo: "password" },
+        { campo: "confermaParola", label: "Conferma password", obbligatorio: true, tipo: "password" },
+      ]
+    : [
+        { campo: "nome", label: "Nome", obbligatorio: true },
+        { campo: "cognome", label: "Cognome", obbligatorio: true },
+        { campo: "impresa", label: "Impresa" },
+        { campo: "attivita", label: "Attività (es. idraulico, elettricista, impresa edile)" },
+        { campo: "piva", label: "P.IVA" },
+        { campo: "codiceFiscale", label: "Codice Fiscale" },
+        { campo: "indirizzo", label: "Indirizzo" },
+        { campo: "email", label: "Email", obbligatorio: true, tipo: "email" },
+        { campo: "cellulare", label: "Cellulare" },
+        { campo: "nomeUtente", label: "Nome utente (auto da impresa, modificabile)", obbligatorio: true },
+        { campo: "parola", label: "Password", obbligatorio: true, tipo: "password" },
+        { campo: "confermaParola", label: "Conferma password", obbligatorio: true, tipo: "password" },
+      ];
+
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 500, margin: "0 auto" }}>
       <h1>Crea Account</h1>
-      <p style={{ color: "#666" }}>Compila i dati per richiedere la creazione di un nuovo account, soggetto ad approvazione.</p>
+      <p style={{ color: "#666" }}>
+        {isLavoratore
+          ? "Compila i dati per creare subito il tuo account gratuito da lavoratore."
+          : "Compila i dati per richiedere la creazione di un nuovo account, soggetto ad approvazione."}
+      </p>
+
+      <div
+        style={{
+          margin: "16px 0",
+          padding: 12,
+          border: "1px solid #d6e6fb",
+          backgroundColor: "#eef4fd",
+          borderRadius: 8,
+        }}
+      >
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 14 }}>
+          <input
+            type="checkbox"
+            checked={isLavoratore}
+            onChange={(e) => setIsLavoratore(e.target.checked)}
+            style={{ marginTop: 2 }}
+          />
+          <span>
+            <strong>Sono un lavoratore</strong> — crea subito un account gratuito, senza attesa di
+            approvazione. Vedrai solo i cantieri a cui verrai assegnato.
+          </span>
+        </label>
+      </div>
 
       <form onSubmit={invia}>
-        {[
-          { campo: "nome", label: "Nome", obbligatorio: true },
-          { campo: "cognome", label: "Cognome", obbligatorio: true },
-          { campo: "impresa", label: "Impresa" },
-          { campo: "attivita", label: "Attività (es. idraulico, elettricista, impresa edile)" },
-          { campo: "piva", label: "P.IVA" },
-          { campo: "codiceFiscale", label: "Codice Fiscale" },
-          { campo: "indirizzo", label: "Indirizzo" },
-          { campo: "email", label: "Email", obbligatorio: true, tipo: "email" },
-          { campo: "cellulare", label: "Cellulare" },
-          { campo: "nomeUtente", label: "Nome utente (auto da impresa, modificabile)", obbligatorio: true },
-          { campo: "parola", label: "Password", obbligatorio: true, tipo: "password" },
-          { campo: "confermaParola", label: "Conferma password", obbligatorio: true, tipo: "password" },
-        ].map((f) => (
+        {campiDaMostrare.map((f) => (
           <div key={f.campo} style={{ marginBottom: 10 }}>
             <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>{f.label}</label>
             <input
@@ -159,7 +242,7 @@ export default function CreaAccountPage() {
         {errore && <p style={{ color: "red" }}>{errore}</p>}
 
         <button type="submit" disabled={invioInCorso} style={{ padding: "10px 20px" }}>
-          {invioInCorso ? "Invio in corso..." : "Invia richiesta"}
+          {invioInCorso ? "Invio in corso..." : isLavoratore ? "Crea account gratuito" : "Invia richiesta"}
         </button>
       </form>
 
