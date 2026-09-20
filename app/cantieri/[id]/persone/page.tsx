@@ -52,7 +52,7 @@ export default function CantiereDettaglioPage() {
     const { data: profilo } = await supabase
       .from("profili")
       .select("id, impresa, attivita_base")
-      .eq("email", emailNuovo)
+      .ilike("email", emailNuovo.trim())
       .maybeSingle();
 
     if (!profilo) return;
@@ -113,11 +113,11 @@ export default function CantiereDettaglioPage() {
     setErrore(null);
     setMessaggio(null);
 
-    // Cerca se esiste già un profilo con questa email
+    // Cerca se esiste già un profilo con questa email (ignora maiuscole/minuscole e spazi)
     const { data: profiloEsistente } = await supabase
       .from("profili")
       .select("id")
-      .eq("email", emailNuovo)
+      .ilike("email", emailNuovo.trim())
       .maybeSingle();
 
     if (!profiloEsistente) {
@@ -227,7 +227,16 @@ export default function CantiereDettaglioPage() {
         <div style={{ marginBottom: 8 }}>
           <select
             value={ruoloNuovo}
-            onChange={(e) => setRuoloNuovo(e.target.value)}
+            onChange={(e) => {
+              const nuovoRuolo = e.target.value;
+              setRuoloNuovo(nuovoRuolo);
+              // Se il campo Attività è ancora vuoto e non è stato modificato a mano,
+              // lo riempie con il ruolo appena scelto (resta comunque modificabile).
+              if (!attivitaNuovo && !attivitaModificataAMano) {
+                const etichetta = RUOLI.find((r) => r.value === nuovoRuolo)?.label;
+                if (etichetta) setAttivitaNuovo(etichetta);
+              }
+            }}
             style={{ width: "100%", padding: 8 }}
           >
             {RUOLI.map((r) => (
