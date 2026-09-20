@@ -7,6 +7,7 @@ export default function AccountPage() {
   const [email, setEmail] = useState("");
   const [impresa, setImpresa] = useState("");
   const [nomeUtente, setNomeUtente] = useState("");
+  const [attivitaBase, setAttivitaBase] = useState("");
   const [caricamento, setCaricamento] = useState(true);
 
   const [nuovaParola, setNuovaParola] = useState("");
@@ -27,12 +28,13 @@ export default function AccountPage() {
 
     const { data: profilo } = await supabase
       .from("profili")
-      .select("impresa, nome_utente")
+      .select("impresa, nome_utente, attivita_base")
       .eq("id", userData.user.id)
       .maybeSingle();
 
     setImpresa(profilo?.impresa ?? "");
     setNomeUtente(profilo?.nome_utente ?? "");
+    setAttivitaBase(profilo?.attivita_base ?? "");
     setCaricamento(false);
   }
 
@@ -50,7 +52,7 @@ export default function AccountPage() {
 
     const { error } = await supabase
       .from("profili")
-      .update({ impresa, nome_utente: nomeUtente })
+      .update({ impresa, nome_utente: nomeUtente, attivita_base: attivitaBase || null })
       .eq("id", userData.user.id);
 
     if (error) {
@@ -103,6 +105,15 @@ export default function AccountPage() {
           <div style={{ marginBottom: 8 }}>
             <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>Nome utente</label>
             <input value={nomeUtente} onChange={(e) => setNomeUtente(e.target.value)} style={{ width: "100%", padding: 8 }} />
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>Attività di base</label>
+            <input
+              placeholder="es. idraulico, elettricista, impresa edile..."
+              value={attivitaBase}
+              onChange={(e) => setAttivitaBase(e.target.value)}
+              style={{ width: "100%", padding: 8 }}
+            />
           </div>
           {erroreProfilo && <p style={{ color: "red" }}>{erroreProfilo}</p>}
           {messaggioProfilo && <p style={{ color: "green" }}>{messaggioProfilo}</p>}
