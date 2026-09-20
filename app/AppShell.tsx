@@ -150,13 +150,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           >
             GENESIVOX
           </Link>
-          <Link
-            href="/"
-            onClick={() => setMenuAperto(null)}
-            style={stileLinkMenu(pathname === "/")}
-          >
-            Panoramica
-          </Link>
           <button
             onClick={() => (menuAperto === "cantieri" ? setMenuAperto(null) : apriMenuCantieri())}
             style={stileBottoneMenu(menuAperto === "cantieri")}
