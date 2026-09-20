@@ -101,6 +101,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       const { data } = await supabase
         .from("profili")
         .select("id, email, impresa, nome_utente")
+        .neq("ruolo", "lavoratore")
         .order("email");
       setUtentiAdmin(data || []);
       return;
