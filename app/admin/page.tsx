@@ -53,6 +53,7 @@ type Richiesta = {
   nome: string;
   cognome: string;
   impresa: string | null;
+  attivita: string | null;
   piva: string | null;
   codice_fiscale: string | null;
   indirizzo: string | null;
@@ -121,7 +122,7 @@ export default function AdminPage() {
     const { data: elencoRichieste } = await supabase
       .from("richieste_account")
       .select(
-        "id, nome, cognome, impresa, piva, codice_fiscale, indirizzo, email, cellulare, nome_utente, parola, stato, creato_il"
+        "id, nome, cognome, impresa, attivita, piva, codice_fiscale, indirizzo, email, cellulare, nome_utente, parola, stato, creato_il"
       )
       .eq("stato", "in_attesa")
       .order("creato_il", { ascending: true });
@@ -130,9 +131,40 @@ export default function AdminPage() {
     setCaricamento(false);
   }
 
-  async function aggiornaStatoRichiesta(id: string, stato: "approvato" | "rifiutato") {
-    await supabase.from("richieste_account").update({ stato }).eq("id", id);
-    setRichieste((prev) => prev.filter((r) => r.id !== id));
+  async function aggiornaStatoRichiesta(richiesta: Richiesta, stato: "approvato" | "rifiutato") {
+    if (stato === "approvato") {
+      // Copia impresa, nome utente e attività nel profilo collegato (trovato per email).
+      // Il profilo deve già esistere: l'utente Supabase Auth va creato PRIMA di premere Approvata.
+      const { data: profiloEsistente } = await supabase
+        .from("profili")
+        .select("id")
+        .eq("email", richiesta.email)
+        .maybeSingle();
+
+      if (!profiloEsistente) {
+        alert(
+          "Non trovo ancora nessun account con questa email. Crea prima il login su Supabase (Authentication → Add user) con la stessa email, poi riprova ad approvare."
+        );
+        return;
+      }
+
+      const { error: erroreAggiornamento } = await supabase
+        .from("profili")
+        .update({
+          impresa: richiesta.impresa,
+          nome_utente: richiesta.nome_utente,
+          attivita_base: richiesta.attivita,
+        })
+        .eq("id", profiloEsistente.id);
+
+      if (erroreAggiornamento) {
+        alert("Errore nel copiare i dati sul profilo: " + erroreAggiornamento.message);
+        return;
+      }
+    }
+
+    await supabase.from("richieste_account").update({ stato }).eq("id", richiesta.id);
+    setRichieste((prev) => prev.filter((r) => r.id !== richiesta.id));
   }
 
   useEffect(() => {
@@ -207,7 +239,8 @@ export default function AdminPage() {
         <p style={{ color: "#666", fontSize: 13, marginTop: 0 }}>
           Arrivano dalla pagina pubblica "Crea Account". Per attivarle: copia email e password qui
           sotto, crea il login su Supabase (Authentication → Add user) con quegli stessi dati, poi
-          premi "Approvata" per toglierla da questo elenco.
+          premi "Approvata": impresa, nome utente e attività vengono copiati in automatico sul
+          profilo appena creato.
         </p>
 
         {richieste.length === 0 && <p style={{ color: "#8a8f98", fontSize: 13 }}>Nessuna richiesta in attesa.</p>}
@@ -229,6 +262,7 @@ export default function AdminPage() {
               <span><strong>Email:</strong> {r.email}</span>
               <span><strong>Password:</strong> {r.parola || "—"}</span>
               <span><strong>Impresa:</strong> {r.impresa || "—"}</span>
+              <span><strong>Attività:</strong> {r.attivita || "—"}</span>
               <span><strong>Nome utente:</strong> {r.nome_utente || "—"}</span>
               <span><strong>P.IVA:</strong> {r.piva || "—"}</span>
               <span><strong>Cod. fiscale:</strong> {r.codice_fiscale || "—"}</span>
@@ -237,7 +271,7 @@ export default function AdminPage() {
             </div>
             <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
               <button
-                onClick={() => aggiornaStatoRichiesta(r.id, "approvato")}
+                onClick={() => aggiornaStatoRichiesta(r, "approvato")}
                 style={{
                   padding: "6px 14px",
                   borderRadius: 6,
@@ -250,7 +284,7 @@ export default function AdminPage() {
                 Approvata (login già creato)
               </button>
               <button
-                onClick={() => aggiornaStatoRichiesta(r.id, "rifiutato")}
+                onClick={() => aggiornaStatoRichiesta(r, "rifiutato")}
                 style={{
                   padding: "6px 14px",
                   borderRadius: 6,
