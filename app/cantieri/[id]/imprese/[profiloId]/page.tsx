@@ -15,6 +15,7 @@ export default function DocumentiMembroPage() {
 
   const [cantiere, setCantiere] = useState<any>(null);
   const [membro, setMembro] = useState<any>(null);
+  const [ruoliCompleti, setRuoliCompleti] = useState<string[]>([]);
   const [tipiRichiesti, setTipiRichiesti] = useState<TipoDocumento[]>([]);
   const [documentiCaricati, setDocumentiCaricati] = useState<Documento[]>([]);
   const [caricamento, setCaricamento] = useState(true);
@@ -40,8 +41,11 @@ export default function DocumentiMembroPage() {
     }
     setMembro(m);
 
+    // Ruolo principale + ruoli extra assegnati da "Ruoli extra": qui li combiniamo
+    // sia per capire quali documenti servono, sia per mostrarli tutti nella pagina.
     const { data: ruoliExtra } = await supabase.from("membro_ruoli").select("ruolo").eq("membro_id", m.id);
     const tuttiIRuoli = Array.from(new Set([m.ruolo, ...(ruoliExtra || []).map((r) => r.ruolo)]));
+    setRuoliCompleti(tuttiIRuoli);
 
     const { data: tipi } = await supabase
       .from("tipi_documento")
@@ -82,7 +86,8 @@ export default function DocumentiMembroPage() {
       </p>
       <h1>{membro.profili?.email}</h1>
       <p style={{ color: "#666" }}>
-        {membro.ruolo} {membro.nome_impresa ? `— ${membro.nome_impresa}` : ""} {membro.attivita ? `(${membro.attivita})` : ""}
+        {ruoliCompleti.join(", ")} {membro.nome_impresa ? `— ${membro.nome_impresa}` : ""}{" "}
+        {membro.attivita ? `(${membro.attivita})` : ""}
       </p>
 
       {categorie.map((cat) => {
