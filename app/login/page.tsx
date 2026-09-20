@@ -122,6 +122,13 @@ export default function LoginPage() {
           <p style={{ marginTop: 8, fontSize: 14, color: "#666" }}>
             Il primo accesso avviene tramite il link ricevuto via email dopo l'acquisto del piano.
           </p>
+
+          <p style={{ marginTop: 20, fontSize: 14, borderTop: "1px solid #eee", paddingTop: 16 }}>
+            Non hai ancora un account?{" "}
+            <a href="/crea-account" style={{ color: "#1a73e8" }}>
+              Crea Account
+            </a>
+          </p>
         </>
       )}
 
