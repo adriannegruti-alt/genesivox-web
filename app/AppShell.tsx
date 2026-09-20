@@ -64,7 +64,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const paginaPubblica =
     pathname?.startsWith("/login") ||
     pathname?.startsWith("/c/") ||
-    pathname?.startsWith("/reimposta-password");
+    pathname?.startsWith("/reimposta-password") ||
+    pathname?.startsWith("/crea-account");
 
   useEffect(() => {
     async function carica() {
@@ -162,13 +163,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           >
             Archivio
           </button>
-          <Link
-            href="/crea-account"
-            onClick={() => setMenuAperto(null)}
-            style={stileLinkMenu(pathname === "/crea-account")}
-          >
-            Crea Account
-          </Link>
           {autoritaControllo && (
             <Link
               href="/ispettiva"
