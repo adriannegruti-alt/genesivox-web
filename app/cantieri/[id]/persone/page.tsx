@@ -20,8 +20,12 @@ type Membro = {
   ruolo: string;
   nome_impresa: string | null;
   attivita: string | null;
-  profili: { email: string } | null;
+  profili: { email: string; impresa: string | null } | null;
 };
+
+function impresaVisualizzata(m: Membro): string {
+  return m.nome_impresa || m.profili?.impresa || "—";
+}
 
 export default function CantiereDettaglioPage() {
   const params = useParams();
@@ -87,7 +91,7 @@ export default function CantiereDettaglioPage() {
 
     const { data: m, error: mErr } = await supabase
       .from("cantiere_membri")
-      .select("id, ruolo, nome_impresa, attivita, stato, profili!cantiere_membri_profilo_id_fkey(email)")
+      .select("id, ruolo, nome_impresa, attivita, stato, profili!cantiere_membri_profilo_id_fkey(email, impresa)")
       .eq("cantiere_id", cantiereId);
 
     if (mErr) console.error("Errore caricamento membri:", mErr);
@@ -186,7 +190,7 @@ export default function CantiereDettaglioPage() {
               <td style={{ padding: 8 }}>
                 {RUOLI.find((r) => r.value === m.ruolo)?.label ?? m.ruolo}
               </td>
-              <td style={{ padding: 8 }}>{m.nome_impresa ?? "—"}</td>
+              <td style={{ padding: 8 }}>{impresaVisualizzata(m)}</td>
               <td style={{ padding: 8 }}>{m.attivita ?? "—"}</td>
               <td style={{ padding: 8 }}>
                 <Link href={`/cantieri/${cantiereId}/persone/${m.id}`} style={{ fontSize: 13 }}>
@@ -229,7 +233,7 @@ export default function CantiereDettaglioPage() {
         </div>
         <div style={{ marginBottom: 8 }}>
           <input
-            placeholder="Nome impresa (si compila da sola se già registrata)"
+            placeholder="Nome impresa"
             value={nomeImpresaNuovo}
             onChange={(e) => {
               setNomeImpresaNuovo(e.target.value);
