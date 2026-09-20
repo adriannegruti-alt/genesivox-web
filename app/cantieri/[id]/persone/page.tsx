@@ -51,7 +51,7 @@ export default function CantiereDettaglioPage() {
 
     const { data: profilo } = await supabase
       .from("profili")
-      .select("id, impresa")
+      .select("id, impresa, attivita_base")
       .eq("email", emailNuovo)
       .maybeSingle();
 
@@ -64,17 +64,23 @@ export default function CantiereDettaglioPage() {
     }
 
     if (!attivitaModificataAMano) {
-      const { data: ultimoMembro } = await supabase
-        .from("cantiere_membri")
-        .select("attivita")
-        .eq("profilo_id", profilo.id)
-        .not("attivita", "is", null)
-        .order("creato_il", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      // Priorità 1: attività di base impostata dall'utente in Impostazioni account.
+      // Priorità 2 (solo se non l'ha impostata): l'ultima attività usata in un altro cantiere.
+      if (profilo.attivita_base) {
+        setAttivitaNuovo(profilo.attivita_base);
+      } else {
+        const { data: ultimoMembro } = await supabase
+          .from("cantiere_membri")
+          .select("attivita")
+          .eq("profilo_id", profilo.id)
+          .not("attivita", "is", null)
+          .order("creato_il", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      if (ultimoMembro?.attivita) {
-        setAttivitaNuovo(ultimoMembro.attivita);
+        if (ultimoMembro?.attivita) {
+          setAttivitaNuovo(ultimoMembro.attivita);
+        }
       }
     }
 
