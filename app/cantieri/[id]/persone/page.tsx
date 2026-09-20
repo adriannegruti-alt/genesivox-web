@@ -33,8 +33,49 @@ export default function CantiereDettaglioPage() {
   const [ruoloNuovo, setRuoloNuovo] = useState("lavoratore");
   const [nomeImpresaNuovo, setNomeImpresaNuovo] = useState("");
   const [attivitaNuovo, setAttivitaNuovo] = useState("");
+  const [impresaModificataAMano, setImpresaModificataAMano] = useState(false);
+  const [attivitaModificataAMano, setAttivitaModificataAMano] = useState(false);
+  const [ricercaAutocompletamento, setRicercaAutocompletamento] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
   const [messaggio, setMessaggio] = useState<string | null>(null);
+
+  // Quando si scrive l'email e si esce dal campo, recupera impresa e attività
+  // con cui quella persona si era già registrata (dal suo account o da un
+  // altro cantiere), per non doverle reinserire a mano se non serve.
+  async function autocompletaDaEmail() {
+    if (!emailNuovo) return;
+
+    const { data: profilo } = await supabase
+      .from("profili")
+      .select("id, impresa")
+      .eq("email", emailNuovo)
+      .maybeSingle();
+
+    if (!profilo) return;
+
+    setRicercaAutocompletamento(true);
+
+    if (profilo.impresa && !impresaModificataAMano) {
+      setNomeImpresaNuovo(profilo.impresa);
+    }
+
+    if (!attivitaModificataAMano) {
+      const { data: ultimoMembro } = await supabase
+        .from("cantiere_membri")
+        .select("attivita")
+        .eq("profilo_id", profilo.id)
+        .not("attivita", "is", null)
+        .order("creato_il", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (ultimoMembro?.attivita) {
+        setAttivitaNuovo(ultimoMembro.attivita);
+      }
+    }
+
+    setRicercaAutocompletamento(false);
+  }
 
   async function carica() {
     const { data: c } = await supabase
@@ -93,6 +134,8 @@ export default function CantiereDettaglioPage() {
     setEmailNuovo("");
     setNomeImpresaNuovo("");
     setAttivitaNuovo("");
+    setImpresaModificataAMano(false);
+    setAttivitaModificataAMano(false);
     carica();
   }
 
@@ -163,9 +206,13 @@ export default function CantiereDettaglioPage() {
             placeholder="Email della persona (deve avere già un account)"
             value={emailNuovo}
             onChange={(e) => setEmailNuovo(e.target.value)}
+            onBlur={autocompletaDaEmail}
             required
             style={{ width: "100%", padding: 8 }}
           />
+          {ricercaAutocompletamento && (
+            <p style={{ fontSize: 12, color: "#666", margin: "4px 0 0" }}>Recupero dati della persona...</p>
+          )}
         </div>
         <div style={{ marginBottom: 8 }}>
           <select
@@ -182,9 +229,12 @@ export default function CantiereDettaglioPage() {
         </div>
         <div style={{ marginBottom: 8 }}>
           <input
-            placeholder="Nome impresa"
+            placeholder="Nome impresa (si compila da sola se già registrata)"
             value={nomeImpresaNuovo}
-            onChange={(e) => setNomeImpresaNuovo(e.target.value)}
+            onChange={(e) => {
+              setNomeImpresaNuovo(e.target.value);
+              setImpresaModificataAMano(true);
+            }}
             style={{ width: "100%", padding: 8 }}
           />
         </div>
@@ -192,7 +242,10 @@ export default function CantiereDettaglioPage() {
           <input
             placeholder="Attività svolta (es. idraulico, elettricista, piastrellista)"
             value={attivitaNuovo}
-            onChange={(e) => setAttivitaNuovo(e.target.value)}
+            onChange={(e) => {
+              setAttivitaNuovo(e.target.value);
+              setAttivitaModificataAMano(true);
+            }}
             style={{ width: "100%", padding: 8 }}
           />
         </div>
