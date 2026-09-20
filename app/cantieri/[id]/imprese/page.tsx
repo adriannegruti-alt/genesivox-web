@@ -46,11 +46,12 @@ type Membro = {
   nome_impresa: string | null;
   attivita: string | null;
   stato: string;
-  profili: { email: string; nome_utente: string | null } | null;
+  profili: { email: string; impresa: string | null; nome_utente: string | null } | null;
 };
 
 function nomeVisualizzato(m: Membro): string {
   if (m.nome_impresa) return m.nome_impresa;
+  if (m.profili?.impresa) return m.profili.impresa;
   if (m.profili?.nome_utente) return m.profili.nome_utente;
   return m.ruolo === "lavoratore" ? "Nome non inserito" : "Nome azienda non inserito";
 }
@@ -74,7 +75,7 @@ export default function ImpresePage() {
   async function carica() {
     const { data: m, error } = await supabase
       .from("cantiere_membri")
-      .select("id, profilo_id, ruolo, nome_impresa, attivita, stato, profili!cantiere_membri_profilo_id_fkey(email, nome_utente)")
+      .select("id, profilo_id, ruolo, nome_impresa, attivita, stato, profili!cantiere_membri_profilo_id_fkey(email, impresa, nome_utente)")
       .eq("cantiere_id", cantiereId)
       .eq("stato", "approvato");
 
