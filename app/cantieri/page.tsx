@@ -78,7 +78,7 @@ export default function CantieriPage() {
   }
 
   async function salvaModifica(id: string) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("cantieri")
       .update({
         nome: nomeModifica,
@@ -86,10 +86,15 @@ export default function CantieriPage() {
         comune: comuneModifica || null,
         provincia: provinciaModifica || null,
       })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id");
 
     if (error) {
       setErrore(error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      alert("Non hai i permessi per modificare questo cantiere (solo chi l'ha creato o ha un ruolo di gestione può farlo).");
       return;
     }
     setModificaId(null);
@@ -99,9 +104,13 @@ export default function CantieriPage() {
   async function archiviaCantiere(id: string, nomeCantiere: string) {
     if (!confirm(`Archiviare "${nomeCantiere}"? Non apparirà più nella lista, ma i dati restano salvati.`)) return;
 
-    const { error } = await supabase.from("cantieri").update({ archiviato: true }).eq("id", id);
+    const { data, error } = await supabase.from("cantieri").update({ archiviato: true }).eq("id", id).select("id");
     if (error) {
       setErrore(error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      alert("Non hai i permessi per archiviare questo cantiere (solo chi l'ha creato o ha un ruolo di gestione può farlo).");
       return;
     }
     caricaCantieri();
@@ -123,9 +132,13 @@ export default function CantieriPage() {
       return;
     }
 
-    const { error } = await supabase.from("cantieri").delete().eq("id", id);
+    const { data, error } = await supabase.from("cantieri").delete().eq("id", id).select("id");
     if (error) {
       setErrore(error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      alert("Non hai i permessi per eliminare questo cantiere (solo chi l'ha creato o ha un ruolo di gestione può farlo).");
       return;
     }
     caricaCantieri();
