@@ -54,6 +54,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const [utente, setUtente] = useState<{ email: string } | null>(null);
   const [autoritaControllo, setAutoritaControllo] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [menuAperto, setMenuAperto] = useState<"cantieri" | "archivio" | null>(null);
 
   const [cantieri, setCantieri] = useState<Cantiere[]>([]);
@@ -70,10 +71,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       if (data?.user) {
         const { data: profilo } = await supabase
           .from("profili")
-          .select("autorita_controllo")
+          .select("autorita_controllo, ruolo")
           .eq("id", data.user.id)
           .maybeSingle();
         setAutoritaControllo(!!profilo?.autorita_controllo);
+        setIsAdmin(profilo?.ruolo === "admin");
       }
     }
     carica();
@@ -178,6 +180,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               style={stileLinkMenu(pathname === "/ispettiva")}
             >
               Vista Ispettiva
+            </Link>
+          )}
+          {isAdmin && (
+            <Link
+              href="/admin"
+              onClick={() => setMenuAperto(null)}
+              style={stileLinkMenu(pathname === "/admin")}
+            >
+              Admin
             </Link>
           )}
         </div>
