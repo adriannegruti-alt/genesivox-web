@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -31,6 +31,7 @@ export default function PreventiviPage() {
   const [attivita, setAttivita] = useState("");
   const [referente, setReferente] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const inputFileRef = useRef<HTMLInputElement>(null);
 
   const [impreseSuggerite, setImpreseSuggerite] = useState<string[]>([]);
   const [attivitaSuggerite, setAttivitaSuggerite] = useState<string[]>([]);
@@ -120,6 +121,7 @@ export default function PreventiviPage() {
     setAttivita("");
     setReferente("");
     setFile(null);
+    if (inputFileRef.current) inputFileRef.current.value = "";
     setUploadInCorso(false);
     carica();
   }
@@ -210,6 +212,7 @@ export default function PreventiviPage() {
         <div style={{ marginBottom: 12 }}>
           <input
             type="file"
+            ref={inputFileRef}
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             style={{ width: "100%" }}
           />
