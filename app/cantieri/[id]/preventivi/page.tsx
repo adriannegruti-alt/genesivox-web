@@ -32,6 +32,9 @@ export default function PreventiviPage() {
   const [referente, setReferente] = useState("");
   const [file, setFile] = useState<File | null>(null);
 
+  const [impreseSuggerite, setImpreseSuggerite] = useState<string[]>([]);
+  const [attivitaSuggerite, setAttivitaSuggerite] = useState<string[]>([]);
+
   async function carica() {
     setErrore(null);
 
@@ -45,14 +48,21 @@ export default function PreventiviPage() {
     const { data: c } = await supabase.from("cantieri").select("id, nome").eq("id", cantiereId).single();
     setCantiere(c);
 
-    // Pre-compila con impresa/attività dell'account, se non ancora impostate
-    const { data: profilo } = await supabase
-      .from("profili")
-      .select("impresa, attivita_base")
-      .eq("id", userData.user.id)
-      .maybeSingle();
-    setNomeImpresa((prev) => prev || profilo?.impresa || "");
-    setAttivita((prev) => prev || profilo?.attivita_base || "");
+    // Suggerimenti presi dalle persone già assegnate a questo cantiere
+    const { data: membri } = await supabase
+      .from("cantiere_membri")
+      .select("nome_impresa, attivita, profili(impresa)")
+      .eq("cantiere_id", cantiereId);
+
+    const imprese = new Set<string>();
+    const attivitaTutte = new Set<string>();
+    (membri || []).forEach((m: any) => {
+      const nomeImp = m.nome_impresa || m.profili?.impresa;
+      if (nomeImp) imprese.add(nomeImp);
+      if (m.attivita) attivitaTutte.add(m.attivita);
+    });
+    setImpreseSuggerite(Array.from(imprese).sort());
+    setAttivitaSuggerite(Array.from(attivitaTutte).sort());
 
     const { data: elenco, error: erroreElenco } = await supabase
       .from("preventivi")
@@ -106,6 +116,8 @@ export default function PreventiviPage() {
       return;
     }
 
+    setNomeImpresa("");
+    setAttivita("");
     setReferente("");
     setFile(null);
     setUploadInCorso(false);
@@ -164,16 +176,28 @@ export default function PreventiviPage() {
             placeholder="Nome impresa"
             value={nomeImpresa}
             onChange={(e) => setNomeImpresa(e.target.value)}
+            list="lista-imprese-suggerite"
             style={{ width: "100%", padding: 8 }}
           />
+          <datalist id="lista-imprese-suggerite">
+            {impreseSuggerite.map((i) => (
+              <option key={i} value={i} />
+            ))}
+          </datalist>
         </div>
         <div style={{ marginBottom: 8 }}>
           <input
             placeholder="Attività di base"
             value={attivita}
             onChange={(e) => setAttivita(e.target.value)}
+            list="lista-attivita-suggerite"
             style={{ width: "100%", padding: 8 }}
           />
+          <datalist id="lista-attivita-suggerite">
+            {attivitaSuggerite.map((a) => (
+              <option key={a} value={a} />
+            ))}
+          </datalist>
         </div>
         <div style={{ marginBottom: 8 }}>
           <input
