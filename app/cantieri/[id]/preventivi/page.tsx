@@ -13,6 +13,8 @@ type Preventivo = {
   storage_path: string;
   nome_file: string | null;
   creato_il: string;
+  approvato: boolean;
+  approvato_il: string | null;
   profili: { email: string } | null;
 };
 
@@ -67,7 +69,9 @@ export default function PreventiviPage() {
 
     const { data: elenco, error: erroreElenco } = await supabase
       .from("preventivi")
-      .select("id, profilo_id, nome_impresa, attivita, referente, storage_path, nome_file, creato_il, profili(email)")
+      .select(
+        "id, profilo_id, nome_impresa, attivita, referente, storage_path, nome_file, creato_il, approvato, approvato_il, profili(email)"
+      )
       .eq("cantiere_id", cantiereId)
       .order("creato_il", { ascending: false });
 
@@ -126,13 +130,107 @@ export default function PreventiviPage() {
     carica();
   }
 
-  async function apriFile(storagePath: string) {
-    const { data, error } = await supabase.storage.from("documenti-cantieri").createSignedUrl(storagePath, 60);
+  async function apriFile(storagePath: string, nomeFile: string | null) {
+    const { data, error } = await supabase.storage.from("documenti-cantieri").createSignedUrl(storagePath, 300);
     if (error || !data) {
       setErrore("Impossibile aprire il file.");
       return;
     }
-    window.open(data.signedUrl, "_blank");
+
+    const finestra = window.open("", "_blank");
+    if (!finestra) {
+      setErrore("Il browser ha bloccato l'apertura della finestra. Consenti i popup per questo sito.");
+      return;
+    }
+
+    finestra.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${nomeFile || "Preventivo"}</title>
+          <style>
+            html, body { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
+            #barra {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 10px 16px;
+              background: #1a73e8;
+            }
+            #barra span { color: #fff; font-size: 14px; }
+            #barra button {
+              padding: 8px 18px;
+              background: #fff;
+              color: #1a73e8;
+              border: none;
+              border-radius: 6px;
+              font-weight: 600;
+              cursor: pointer;
+              font-size: 14px;
+            }
+            iframe { width: 100%; height: calc(100% - 46px); border: none; display: block; }
+            @media print {
+              #barra { display: none; }
+              iframe { height: 100%; }
+              @page { size: A4; margin: 10mm; }
+            }
+          </style>
+        </head>
+        <body>
+          <div id="barra">
+            <span>${nomeFile || "Preventivo"}</span>
+            <button onclick="window.print()">🖨️ Stampa</button>
+          </div>
+          <iframe src="${data.signedUrl}"></iframe>
+        </body>
+      </html>
+    `);
+    finestra.document.close();
+  }
+
+  async function approvaPreventivo(p: Preventivo) {
+    if (p.approvato) return;
+    if (!confirm(`Approvare il preventivo di ${p.nome_impresa || "questa impresa"}?`)) return;
+
+    const { data, error } = await supabase
+      .from("preventivi")
+      .update({ approvato: true, approvato_il: new Date().toISOString(), approvato_da: utenteId })
+      .eq("id", p.id)
+      .select("id");
+
+    if (error) {
+      setErrore(error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      alert("Non hai i permessi per approvare questo preventivo.");
+      return;
+    }
+
+    // La notifica vera (email) verrà collegata a breve: per ora la richiesta
+    // viene solo registrata, l'approvazione nel gestionale è già effettiva.
+    try {
+      const risposta = await fetch("/api/notifica-approvazione", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          preventivoId: p.id,
+          cantiereId,
+          nomeImpresa: p.nome_impresa,
+          emailImpresa: p.profili?.email,
+        }),
+      });
+      const risultato = await risposta.json();
+      if (risultato?.inviata) {
+        alert("Preventivo approvato. Notifica inviata all'impresa.");
+      } else {
+        alert("Preventivo approvato. (L'invio automatico della notifica sarà attivo a breve.)");
+      }
+    } catch {
+      alert("Preventivo approvato. (Non è stato possibile inviare la notifica in questo momento.)");
+    }
+
+    carica();
   }
 
   async function eliminaPreventivo(p: Preventivo) {
@@ -242,6 +340,7 @@ export default function PreventiviPage() {
             <th style={{ padding: 8 }}>Attività</th>
             <th style={{ padding: 8 }}>Referente</th>
             <th style={{ padding: 8 }}>Caricato il</th>
+            <th style={{ padding: 8 }}>Stato</th>
             <th style={{ padding: 8 }}></th>
           </tr>
         </thead>
@@ -252,10 +351,32 @@ export default function PreventiviPage() {
               <td style={{ padding: 8 }}>{p.attivita || "—"}</td>
               <td style={{ padding: 8 }}>{p.referente || "—"}</td>
               <td style={{ padding: 8 }}>{new Date(p.creato_il).toLocaleDateString("it-IT")}</td>
+              <td style={{ padding: 8 }}>
+                {p.approvato ? (
+                  <span style={{ color: "#1e7e34", fontWeight: 600 }}>✅ Approvato</span>
+                ) : (
+                  <span style={{ color: "#999" }}>In attesa</span>
+                )}
+              </td>
               <td style={{ padding: 8, textAlign: "right", whiteSpace: "nowrap" }}>
-                <button onClick={() => apriFile(p.storage_path)} style={{ marginRight: 8, padding: "4px 10px" }}>
+                <button onClick={() => apriFile(p.storage_path, p.nome_file)} style={{ marginRight: 8, padding: "4px 10px" }}>
                   Apri
                 </button>
+                {!p.approvato && (
+                  <button
+                    onClick={() => approvaPreventivo(p)}
+                    style={{
+                      marginRight: 8,
+                      padding: "4px 10px",
+                      color: "#1e7e34",
+                      border: "1px solid #1e7e34",
+                      borderRadius: 4,
+                      background: "none",
+                    }}
+                  >
+                    Approvato
+                  </button>
+                )}
                 <button
                   onClick={() => eliminaPreventivo(p)}
                   style={{ padding: "4px 10px", color: "#c0392b", border: "1px solid #c0392b", borderRadius: 4, background: "none" }}
