@@ -1,0 +1,246 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+
+type Preventivo = {
+  id: string;
+  profilo_id: string;
+  nome_impresa: string | null;
+  attivita: string | null;
+  referente: string | null;
+  storage_path: string;
+  nome_file: string | null;
+  creato_il: string;
+  profili: { email: string } | null;
+};
+
+export default function PreventiviPage() {
+  const params = useParams();
+  const cantiereId = params.id as string;
+
+  const [cantiere, setCantiere] = useState<any>(null);
+  const [preventivi, setPreventivi] = useState<Preventivo[]>([]);
+  const [caricamento, setCaricamento] = useState(true);
+  const [errore, setErrore] = useState<string | null>(null);
+  const [uploadInCorso, setUploadInCorso] = useState(false);
+  const [utenteId, setUtenteId] = useState<string | null>(null);
+
+  const [nomeImpresa, setNomeImpresa] = useState("");
+  const [attivita, setAttivita] = useState("");
+  const [referente, setReferente] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+
+  async function carica() {
+    setErrore(null);
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) {
+      setCaricamento(false);
+      return;
+    }
+    setUtenteId(userData.user.id);
+
+    const { data: c } = await supabase.from("cantieri").select("id, nome").eq("id", cantiereId).single();
+    setCantiere(c);
+
+    // Pre-compila con impresa/attività dell'account, se non ancora impostate
+    const { data: profilo } = await supabase
+      .from("profili")
+      .select("impresa, attivita_base")
+      .eq("id", userData.user.id)
+      .maybeSingle();
+    setNomeImpresa((prev) => prev || profilo?.impresa || "");
+    setAttivita((prev) => prev || profilo?.attivita_base || "");
+
+    const { data: elenco, error: erroreElenco } = await supabase
+      .from("preventivi")
+      .select("id, profilo_id, nome_impresa, attivita, referente, storage_path, nome_file, creato_il, profili(email)")
+      .eq("cantiere_id", cantiereId)
+      .order("creato_il", { ascending: false });
+
+    if (erroreElenco) setErrore(erroreElenco.message);
+    setPreventivi((elenco as any) || []);
+    setCaricamento(false);
+  }
+
+  useEffect(() => {
+    if (cantiereId) carica();
+  }, [cantiereId]);
+
+  async function invia(e: React.FormEvent) {
+    e.preventDefault();
+    setErrore(null);
+
+    if (!file) {
+      setErrore("Seleziona il file del preventivo da caricare.");
+      return;
+    }
+    if (!utenteId) return;
+
+    setUploadInCorso(true);
+
+    const percorso = `${cantiereId}/${utenteId}/preventivo_${Date.now()}_${file.name}`;
+
+    const { error: uploadErr } = await supabase.storage.from("documenti-cantieri").upload(percorso, file);
+    if (uploadErr) {
+      setErrore(uploadErr.message);
+      setUploadInCorso(false);
+      return;
+    }
+
+    const { error: dbErr } = await supabase.from("preventivi").insert({
+      cantiere_id: cantiereId,
+      profilo_id: utenteId,
+      nome_impresa: nomeImpresa || null,
+      attivita: attivita || null,
+      referente: referente || null,
+      storage_path: percorso,
+      nome_file: file.name,
+    });
+
+    if (dbErr) {
+      setErrore(`${dbErr.message} — verifica di essere membro di questo cantiere.`);
+      setUploadInCorso(false);
+      return;
+    }
+
+    setReferente("");
+    setFile(null);
+    setUploadInCorso(false);
+    carica();
+  }
+
+  async function apriFile(storagePath: string) {
+    const { data, error } = await supabase.storage.from("documenti-cantieri").createSignedUrl(storagePath, 60);
+    if (error || !data) {
+      setErrore("Impossibile aprire il file.");
+      return;
+    }
+    window.open(data.signedUrl, "_blank");
+  }
+
+  async function eliminaPreventivo(p: Preventivo) {
+    if (!confirm(`Eliminare il preventivo "${p.nome_file}" di ${p.nome_impresa || "—"}? L'operazione non è reversibile.`)) return;
+
+    await supabase.storage.from("documenti-cantieri").remove([p.storage_path]);
+
+    const { data, error } = await supabase.from("preventivi").delete().eq("id", p.id).select("id");
+
+    if (error) {
+      setErrore(error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      alert("Non hai i permessi per eliminare questo preventivo.");
+      return;
+    }
+    carica();
+  }
+
+  if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
+
+  return (
+    <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 800 }}>
+      <h1>Preventivi — {cantiere?.nome}</h1>
+      <p style={{ color: "#666", marginBottom: 20 }}>
+        Elenco condiviso dei preventivi caricati dalle imprese e subappaltatori assegnati a questo cantiere.
+      </p>
+
+      <form
+        onSubmit={invia}
+        style={{
+          border: "1px solid #ddd",
+          borderRadius: 8,
+          padding: 16,
+          marginBottom: 24,
+          backgroundColor: "#fafafa",
+        }}
+      >
+        <h3 style={{ marginTop: 0 }}>Carica un nuovo preventivo</h3>
+        <div style={{ marginBottom: 8 }}>
+          <input
+            placeholder="Nome impresa"
+            value={nomeImpresa}
+            onChange={(e) => setNomeImpresa(e.target.value)}
+            style={{ width: "100%", padding: 8 }}
+          />
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <input
+            placeholder="Attività di base"
+            value={attivita}
+            onChange={(e) => setAttivita(e.target.value)}
+            style={{ width: "100%", padding: 8 }}
+          />
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <input
+            placeholder="Referente"
+            value={referente}
+            onChange={(e) => setReferente(e.target.value)}
+            style={{ width: "100%", padding: 8 }}
+          />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <input
+            type="file"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            style={{ width: "100%" }}
+          />
+        </div>
+        {errore && <p style={{ color: "red" }}>{errore}</p>}
+        <button
+          type="submit"
+          disabled={uploadInCorso}
+          style={{
+            padding: "10px 20px",
+            backgroundColor: "#1a73e8",
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            cursor: "pointer",
+          }}
+        >
+          {uploadInCorso ? "Caricamento..." : "Carica preventivo"}
+        </button>
+      </form>
+
+      <h3>Preventivi caricati</h3>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
+            <th style={{ padding: 8 }}>Impresa</th>
+            <th style={{ padding: 8 }}>Attività</th>
+            <th style={{ padding: 8 }}>Referente</th>
+            <th style={{ padding: 8 }}>Caricato il</th>
+            <th style={{ padding: 8 }}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {preventivi.map((p) => (
+            <tr key={p.id} style={{ borderBottom: "1px solid #eee" }}>
+              <td style={{ padding: 8 }}>{p.nome_impresa || "—"}</td>
+              <td style={{ padding: 8 }}>{p.attivita || "—"}</td>
+              <td style={{ padding: 8 }}>{p.referente || "—"}</td>
+              <td style={{ padding: 8 }}>{new Date(p.creato_il).toLocaleDateString("it-IT")}</td>
+              <td style={{ padding: 8, textAlign: "right", whiteSpace: "nowrap" }}>
+                <button onClick={() => apriFile(p.storage_path)} style={{ marginRight: 8, padding: "4px 10px" }}>
+                  Apri
+                </button>
+                <button
+                  onClick={() => eliminaPreventivo(p)}
+                  style={{ padding: "4px 10px", color: "#c0392b", border: "1px solid #c0392b", borderRadius: 4, background: "none" }}
+                >
+                  Elimina
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {preventivi.length === 0 && <p>Nessun preventivo caricato ancora.</p>}
+    </div>
+  );
+}
