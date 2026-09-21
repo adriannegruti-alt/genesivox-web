@@ -31,11 +31,10 @@ export default function PaginaPubblicaCantierePage() {
 
   useEffect(() => {
     async function carica() {
-      const { data } = await supabase
-        .from("cantieri")
-        .select("id, nome, indirizzo")
-        .eq("qr_token", token)
-        .maybeSingle();
+      // Ricerca sicura: restituisce SOLO il cantiere corrispondente a questo
+      // codice QR, senza aprire l'intera tabella cantieri a chi non è loggato.
+      const { data: risultati } = await supabase.rpc("cerca_cantiere_per_qr", { codice_qr: token });
+      const data = risultati?.[0] ?? null;
 
       if (!data) {
         setCaricamento(false);
@@ -119,8 +118,6 @@ export default function PaginaPubblicaCantierePage() {
     await supabase.from("profili").upsert({ id: userId, email, ruolo: "impresa" });
 
     // 3. Richiesta di iscrizione al cantiere (stato: in attesa di approvazione)
-    // Uso insert semplice invece di upsert per evitare il comportamento
-    // combinato INSERT+UPDATE di "ON CONFLICT", che con RLS può dare falsi blocchi.
     const { error: membroErr } = await supabase.from("cantiere_membri").insert({
       cantiere_id: cantiere.id,
       profilo_id: userId,
