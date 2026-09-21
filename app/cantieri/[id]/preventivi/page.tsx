@@ -143,13 +143,29 @@ export default function PreventiviPage() {
       return;
     }
 
+    const estensione = (nomeFile || "").split(".").pop()?.toLowerCase() || "";
+    const eImmagine = ["jpg", "jpeg", "png", "gif", "webp", "bmp"].includes(estensione);
+    const ePdf = estensione === "pdf";
+    const siPuoVisualizzare = eImmagine || ePdf;
+
+    const nomeScaricato = (nomeFile || "preventivo").replace(/"/g, "");
+
+    const contenuto = ePdf
+      ? `<embed id="visore" src="${data.signedUrl}" type="application/pdf" />`
+      : eImmagine
+      ? `<div id="cornice-immagine"><img id="visore-immagine" src="${data.signedUrl}" /></div>`
+      : `<div id="non-visualizzabile">
+           <p>Questo tipo di file (.${estensione || "sconosciuto"}) non può essere visualizzato direttamente nel browser.</p>
+           <a id="scarica-grande" href="${data.signedUrl}" download="${nomeScaricato}">⬇️ Scarica il file per aprirlo</a>
+         </div>`;
+
     finestra.document.write(`
       <!DOCTYPE html>
       <html>
         <head>
           <title>${nomeFile || "Preventivo"}</title>
           <style>
-            html, body { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
+            html, body { margin: 0; padding: 0; height: 100%; font-family: sans-serif; background: #525659; }
             #barra {
               display: flex;
               justify-content: space-between;
@@ -158,7 +174,8 @@ export default function PreventiviPage() {
               background: #1a73e8;
             }
             #barra span { color: #fff; font-size: 14px; }
-            #barra button {
+            #barra .azioni { display: flex; gap: 8px; }
+            #barra button, #barra a {
               padding: 8px 18px;
               background: #fff;
               color: #1a73e8;
@@ -167,11 +184,32 @@ export default function PreventiviPage() {
               font-weight: 600;
               cursor: pointer;
               font-size: 14px;
+              text-decoration: none;
+              display: inline-block;
             }
-            iframe { width: 100%; height: calc(100% - 46px); border: none; display: block; }
+            #visore { width: 100%; height: calc(100% - 46px); border: none; display: block; }
+            #cornice-immagine {
+              height: calc(100% - 46px);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              overflow: auto;
+            }
+            #visore-immagine { max-width: 100%; max-height: 100%; background: #fff; }
+            #non-visualizzabile {
+              height: calc(100% - 46px);
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              color: #fff;
+              text-align: center;
+              padding: 24px;
+            }
+            #scarica-grande { margin-top: 16px; }
             @media print {
               #barra { display: none; }
-              iframe { height: 100%; }
+              #visore, #cornice-immagine { height: 100%; }
               @page { size: A4; margin: 10mm; }
             }
           </style>
@@ -179,9 +217,12 @@ export default function PreventiviPage() {
         <body>
           <div id="barra">
             <span>${nomeFile || "Preventivo"}</span>
-            <button onclick="window.print()">🖨️ Stampa</button>
+            <div class="azioni">
+              <a href="${data.signedUrl}" download="${nomeScaricato}">⬇️ Scarica</a>
+              ${siPuoVisualizzare ? `<button onclick="window.print()">🖨️ Stampa</button>` : ""}
+            </div>
           </div>
-          <iframe src="${data.signedUrl}"></iframe>
+          ${contenuto}
         </body>
       </html>
     `);
