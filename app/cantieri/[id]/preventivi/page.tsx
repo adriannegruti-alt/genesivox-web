@@ -70,7 +70,7 @@ export default function PreventiviPage() {
     const { data: elenco, error: erroreElenco } = await supabase
       .from("preventivi")
       .select(
-        "id, profilo_id, nome_impresa, attivita, referente, storage_path, nome_file, creato_il, approvato, approvato_il, profili(email)"
+        "id, profilo_id, nome_impresa, attivita, referente, storage_path, nome_file, creato_il, approvato, approvato_il, profili!preventivi_profilo_id_fkey(email)"
       )
       .eq("cantiere_id", cantiereId)
       .order("creato_il", { ascending: false });
