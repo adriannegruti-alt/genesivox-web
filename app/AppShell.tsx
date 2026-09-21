@@ -87,6 +87,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           .maybeSingle();
         setAutoritaControllo(!!profilo?.autorita_controllo);
         setIsAdmin(profilo?.ruolo === "admin");
+      } else if (!paginaPubblica) {
+        // Nessuno loggato e la pagina non è tra quelle pubbliche: manda al login
+        // invece di mostrare la barra strumenti "vuota" senza dati da vedere.
+        router.push("/login");
       }
     }
     carica();
