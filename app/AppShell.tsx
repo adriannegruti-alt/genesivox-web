@@ -98,6 +98,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   async function apriMenuCantieri() {
     setMenuAperto("cantieri");
+    router.push("/cantieri");
 
     if (isAdmin) {
       setUtenteSelezionato(null);
@@ -227,6 +228,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <>
               <Link
                 href="/account"
+                onClick={() => setMenuAperto(null)}
                 style={{
                   color: COLORE_TESTO,
                   textDecoration: "none",
@@ -238,7 +240,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 {utente.email}
               </Link>
               <button
-                onClick={esci}
+                onClick={() => {
+                  setMenuAperto(null);
+                  esci();
+                }}
                 style={{
                   padding: "6px 12px",
                   borderRadius: 7,
