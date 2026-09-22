@@ -16,6 +16,7 @@ const RUOLI = [
 type Fase =
   | "scelta"
   | "login_presenza"
+  | "completa_nome"
   | "presenza_ok"
   | "non_membro"
   | "registrazione"
@@ -43,6 +44,10 @@ export default function PaginaPubblicaCantierePage() {
 
   const [messaggioPresenza, setMessaggioPresenza] = useState("");
   const [inCorso, setInCorso] = useState(false);
+
+  const [personaInAttesa, setPersonaInAttesa] = useState<string | null>(null);
+  const [nomeCompletamento, setNomeCompletamento] = useState("");
+  const [cognomeCompletamento, setCognomeCompletamento] = useState("");
 
   useEffect(() => {
     async function carica() {
@@ -149,11 +154,55 @@ export default function PaginaPubblicaCantierePage() {
     setFase("presenza_ok");
   }
 
+  // Prima di registrare la presenza, verifica che l'account abbia già
+  // Nome e Cognome compilati (servono per riconoscere la persona nel
+  // registro del cantiere). Se mancano, li chiede una volta sola: le
+  // volte successive non serve più, perché restano salvati sull'account.
+  async function verificaEProcedi(idPersona: string) {
+    const { data: profilo } = await supabase
+      .from("profili")
+      .select("nome, cognome")
+      .eq("id", idPersona)
+      .maybeSingle();
+
+    if (profilo?.nome && profilo?.cognome) {
+      registraPresenza(idPersona);
+    } else {
+      setNomeCompletamento(profilo?.nome ?? "");
+      setCognomeCompletamento(profilo?.cognome ?? "");
+      setPersonaInAttesa(idPersona);
+      setFase("completa_nome");
+    }
+  }
+
+  async function completaEProsegui(e: React.FormEvent) {
+    e.preventDefault();
+    setErrore(null);
+    if (!personaInAttesa) return;
+
+    if (!nomeCompletamento.trim() || !cognomeCompletamento.trim()) {
+      setErrore("Inserisci nome e cognome.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("profili")
+      .update({ nome: nomeCompletamento.trim(), cognome: cognomeCompletamento.trim() })
+      .eq("id", personaInAttesa);
+
+    if (error) {
+      setErrore(error.message);
+      return;
+    }
+
+    registraPresenza(personaInAttesa);
+  }
+
   function premutoPresenza() {
     setErrore(null);
     if (sessioneAttiva && userId) {
       if (eMembro) {
-        registraPresenza(userId);
+        verificaEProcedi(userId);
       } else {
         setFase("non_membro");
       }
@@ -194,7 +243,7 @@ export default function PaginaPubblicaCantierePage() {
 
     if (membro) {
       setEMembro(true);
-      registraPresenza(loginData.user.id);
+      verificaEProcedi(loginData.user.id);
     } else {
       setEMembro(false);
       setFase("non_membro");
@@ -360,6 +409,49 @@ export default function PaginaPubblicaCantierePage() {
           >
             ← Indietro
           </button>
+        </>
+      )}
+
+      {fase === "completa_nome" && (
+        <>
+          <p>Prima di registrare la presenza, completa il tuo nome (serve una sola volta, poi resta salvato).</p>
+          <form onSubmit={completaEProsegui}>
+            <div style={{ marginBottom: 8 }}>
+              <input
+                placeholder="Nome"
+                value={nomeCompletamento}
+                onChange={(e) => setNomeCompletamento(e.target.value)}
+                required
+                style={{ width: "100%", padding: 8 }}
+              />
+            </div>
+            <div style={{ marginBottom: 8 }}>
+              <input
+                placeholder="Cognome"
+                value={cognomeCompletamento}
+                onChange={(e) => setCognomeCompletamento(e.target.value)}
+                required
+                style={{ width: "100%", padding: 8 }}
+              />
+            </div>
+            {errore && <p style={{ color: "red" }}>{errore}</p>}
+            <button
+              type="submit"
+              style={{
+                width: "100%",
+                padding: "14px 16px",
+                backgroundColor: "#16a34a",
+                color: "#fff",
+                border: "none",
+                borderRadius: 10,
+                fontSize: 16,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Continua e registra presenza
+            </button>
+          </form>
         </>
       )}
 
