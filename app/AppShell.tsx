@@ -139,7 +139,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       .eq("archiviato", true)
       .order("nome");
     setCantieriArchiviati(data || []);
-    router.push("/archivio");
+
+    // Di default mostra subito il primo cantiere archiviato della tendina;
+    // se poi ne clicchi un altro dalla tendina, si apre quello.
+    if (data && data.length > 0) {
+      router.push(`/cantieri/${data[0].id}`);
+    } else {
+      router.push("/archivio");
+    }
   }
 
   async function ripristinaCantiere(id: string) {
