@@ -9,6 +9,8 @@ type Membro = {
   nome_impresa: string | null;
   ruolo: string;
   email: string | null;
+  nome: string | null;
+  cognome: string | null;
 };
 
 type Presenza = {
@@ -48,7 +50,7 @@ export default function PresenzePage() {
 
     const { data: elencoMembri } = await supabase
       .from("cantiere_membri")
-      .select("profilo_id, nome_impresa, ruolo, profili!cantiere_membri_profilo_id_fkey(email)")
+      .select("profilo_id, nome_impresa, ruolo, profili!cantiere_membri_profilo_id_fkey(email, nome, cognome)")
       .eq("cantiere_id", cantiereId);
 
     setMembri(
@@ -57,6 +59,8 @@ export default function PresenzePage() {
         nome_impresa: m.nome_impresa,
         ruolo: m.ruolo,
         email: m.profili?.email ?? null,
+        nome: m.profili?.nome ?? null,
+        cognome: m.profili?.cognome ?? null,
       }))
     );
 
@@ -121,7 +125,14 @@ export default function PresenzePage() {
   function nomeVisualizzato(profiloId: string): string {
     const m = membri.find((x) => x.profilo_id === profiloId);
     if (!m) return "—";
+    const nomeCompleto = [m.nome, m.cognome].filter(Boolean).join(" ");
+    if (nomeCompleto) return nomeCompleto;
     return m.nome_impresa || m.email || "—";
+  }
+
+  function impresaVisualizzata(profiloId: string): string {
+    const m = membri.find((x) => x.profilo_id === profiloId);
+    return m?.nome_impresa || "—";
   }
 
   function ruoloVisualizzato(profiloId: string): string {
@@ -153,7 +164,8 @@ export default function PresenzePage() {
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 24 }}>
         <thead>
           <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-            <th style={{ padding: 8 }}>Impresa / Persona</th>
+            <th style={{ padding: 8 }}>Persona</th>
+            <th style={{ padding: 8 }}>Impresa</th>
             <th style={{ padding: 8 }}>Ruolo</th>
             <th style={{ padding: 8 }}>Ingresso</th>
             <th style={{ padding: 8 }}>Uscita</th>
@@ -164,6 +176,7 @@ export default function PresenzePage() {
           {presenze.map((p) => (
             <tr key={p.id} style={{ borderBottom: "1px solid #eee" }}>
               <td style={{ padding: 8 }}>{nomeVisualizzato(p.profilo_id)}</td>
+              <td style={{ padding: 8 }}>{impresaVisualizzata(p.profilo_id)}</td>
               <td style={{ padding: 8 }}>{ruoloVisualizzato(p.profilo_id)}</td>
               <td style={{ padding: 8, color: "#16a34a", fontWeight: 600 }}>{formattaOra(p.ora_ingresso)}</td>
               <td style={{ padding: 8 }}>
@@ -197,7 +210,7 @@ export default function PresenzePage() {
               <option value="">Seleziona persona...</option>
               {membriSenzaPresenzaOggi.map((m) => (
                 <option key={m.profilo_id} value={m.profilo_id}>
-                  {m.nome_impresa || m.email} ({m.ruolo})
+                  {[m.nome, m.cognome].filter(Boolean).join(" ") || m.nome_impresa || m.email} ({m.ruolo})
                 </option>
               ))}
             </select>
