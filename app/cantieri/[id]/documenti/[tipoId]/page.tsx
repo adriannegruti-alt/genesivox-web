@@ -23,6 +23,7 @@ export default function DettaglioTipoDocumentoPage() {
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
   const [uploadInCorso, setUploadInCorso] = useState(false);
+  const [esitoAntivirus, setEsitoAntivirus] = useState<string | null>(null);
 
   async function carica() {
     setErrore(null);
@@ -57,6 +58,7 @@ export default function DettaglioTipoDocumentoPage() {
     if (!tipo) return;
     setUploadInCorso(true);
     setErrore(null);
+    setEsitoAntivirus(null);
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) return;
@@ -69,6 +71,11 @@ export default function DettaglioTipoDocumentoPage() {
       setUploadInCorso(false);
       return;
     }
+    setEsitoAntivirus(
+      controllo.verificato
+        ? "✅ Controllo antivirus: nessuna minaccia rilevata."
+        : "⚠️ Caricato senza controllo antivirus (servizio non ancora attivo)."
+    );
 
     const percorso = `${cantiereId}/${userData.user.id}/${Date.now()}_${fileDaCaricare.name}`;
 
@@ -148,6 +155,11 @@ export default function DettaglioTipoDocumentoPage() {
       </label>
 
       {errore && <p style={{ color: "red" }}>{errore}</p>}
+      {esitoAntivirus && (
+        <p style={{ color: esitoAntivirus.startsWith("✅") ? "#1e7e34" : "#b45309", fontSize: 13 }}>
+          {esitoAntivirus}
+        </p>
+      )}
 
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
