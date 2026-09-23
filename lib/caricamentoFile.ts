@@ -42,10 +42,10 @@ export async function comprimiImmagine(file: File, latoMassimo = 1600, qualita =
 
 /**
  * Manda il file al nostro server per un controllo antivirus, prima di
- * caricarlo su Supabase. Finché non colleghiamo un servizio antivirus
- * (chiave CLOUDMERSIVE_API_KEY su Vercel), il controllo viene "saltato"
- * e il file passa comunque — quindi questa funzione non blocca mai i
- * caricamenti finché non è tutto collegato.
+ * caricarlo su Supabase. Per sicurezza, se il controllo non può essere
+ * completato per qualsiasi motivo (servizio non raggiungibile, errore di
+ * rete, ecc.) il file viene considerato NON sicuro: meglio bloccare un
+ * caricamento in più che rischiare di far passare qualcosa di infetto.
  */
 export async function verificaAntivirus(file: File): Promise<{ pulito: boolean; verificato: boolean }> {
   try {
@@ -53,11 +53,11 @@ export async function verificaAntivirus(file: File): Promise<{ pulito: boolean; 
     datiForm.append("file", file);
 
     const risposta = await fetch("/api/scansiona-virus", { method: "POST", body: datiForm });
-    if (!risposta.ok) return { pulito: true, verificato: false };
+    if (!risposta.ok) return { pulito: false, verificato: false };
 
     const risultato = await risposta.json();
     return { pulito: !!risultato.pulito, verificato: !!risultato.verificato };
   } catch {
-    return { pulito: true, verificato: false };
+    return { pulito: false, verificato: false };
   }
 }
