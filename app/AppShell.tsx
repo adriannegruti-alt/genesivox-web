@@ -72,7 +72,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     pathname?.startsWith("/login") ||
     pathname?.startsWith("/c/") ||
     pathname?.startsWith("/reimposta-password") ||
-    pathname?.startsWith("/crea-account");
+    pathname?.startsWith("/crea-account") ||
+    pathname?.startsWith("/privacy");
 
   useEffect(() => {
     async function carica() {
