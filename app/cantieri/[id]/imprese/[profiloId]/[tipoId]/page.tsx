@@ -24,6 +24,7 @@ export default function DettaglioTipoDocumentoMembroPage() {
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
   const [uploadInCorso, setUploadInCorso] = useState(false);
+  const [esitoAntivirus, setEsitoAntivirus] = useState<string | null>(null);
 
   async function carica() {
     setErrore(null);
@@ -55,6 +56,7 @@ export default function DettaglioTipoDocumentoMembroPage() {
     if (!tipo) return;
     setUploadInCorso(true);
     setErrore(null);
+    setEsitoAntivirus(null);
 
     const fileDaCaricare = await comprimiImmagine(file);
 
@@ -64,6 +66,11 @@ export default function DettaglioTipoDocumentoMembroPage() {
       setUploadInCorso(false);
       return;
     }
+    setEsitoAntivirus(
+      controllo.verificato
+        ? "✅ Controllo antivirus: nessuna minaccia rilevata."
+        : "⚠️ Caricato senza controllo antivirus (servizio non ancora attivo)."
+    );
 
     const percorso = `${cantiereId}/${profiloId}/${Date.now()}_${fileDaCaricare.name}`;
 
@@ -143,6 +150,11 @@ export default function DettaglioTipoDocumentoMembroPage() {
       </label>
 
       {errore && <p style={{ color: "red" }}>{errore}</p>}
+      {esitoAntivirus && (
+        <p style={{ color: esitoAntivirus.startsWith("✅") ? "#1e7e34" : "#b45309", fontSize: 13 }}>
+          {esitoAntivirus}
+        </p>
+      )}
 
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
