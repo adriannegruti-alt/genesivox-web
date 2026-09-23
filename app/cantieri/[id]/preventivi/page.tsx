@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { comprimiImmagine, verificaAntivirus } from "@/lib/caricamentoFile";
+import { comprimiImmagine, verificaAntivirus, validaFile, ACCEPT_INPUT_FILE } from "@/lib/caricamentoFile";
 
 type Preventivo = {
   id: string;
@@ -100,6 +100,13 @@ export default function PreventiviPage() {
     setUploadInCorso(true);
 
     const fileDaCaricare = await comprimiImmagine(file);
+
+    const validazione = validaFile(fileDaCaricare);
+    if (!validazione.valido) {
+      setErrore(validazione.errore || "File non valido.");
+      setUploadInCorso(false);
+      return;
+    }
 
     const controllo = await verificaAntivirus(fileDaCaricare);
     if (!controllo.verificato) {
@@ -370,6 +377,7 @@ export default function PreventiviPage() {
           <input
             type="file"
             ref={inputFileRef}
+            accept={ACCEPT_INPUT_FILE}
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             style={{ width: "100%" }}
           />
