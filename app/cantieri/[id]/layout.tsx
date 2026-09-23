@@ -11,11 +11,24 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
   const cantiereId = params.id as string;
 
   const [cantiere, setCantiere] = useState<any>(null);
+  const [puoApprovareRuoli, setPuoApprovareRuoli] = useState(false);
 
   useEffect(() => {
     async function carica() {
-      const { data } = await supabase.from("cantieri").select("id, nome").eq("id", cantiereId).single();
+      const { data } = await supabase.from("cantieri").select("id, nome, creato_da").eq("id", cantiereId).single();
       setCantiere(data);
+
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData?.user && data) {
+        const { data: profilo } = await supabase
+          .from("profili")
+          .select("ruolo")
+          .eq("id", userData.user.id)
+          .maybeSingle();
+        const isAdmin = profilo?.ruolo === "admin";
+        const isCreatore = data.creato_da === userData.user.id;
+        setPuoApprovareRuoli(isAdmin || isCreatore);
+      }
     }
     if (cantiereId) carica();
   }, [cantiereId]);
@@ -28,6 +41,9 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
     { href: `/cantieri/${cantiereId}/presenze`, label: "🕒 Presenze" },
     { href: `/cantieri/${cantiereId}/imprese`, label: "🏢 Imprese e subappaltatori" },
     { href: `/cantieri/${cantiereId}/visite`, label: "🪪 Visite ispettive" },
+    ...(puoApprovareRuoli
+      ? [{ href: `/cantieri/${cantiereId}/richieste-ruolo`, label: "✅ Richieste di ruolo" }]
+      : []),
   ];
 
   return (
