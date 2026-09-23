@@ -535,6 +535,13 @@ export default function PaginaPubblicaCantierePage() {
               </select>
             </div>
             {errore && <p style={{ color: "red" }}>{errore}</p>}
+            <p style={{ fontSize: 12, color: "#888" }}>
+              Registrandoti accetti il trattamento dei tuoi dati come descritto nella{" "}
+              <a href="/privacy" target="_blank" style={{ color: "#1a73e8" }}>
+                informativa privacy
+              </a>
+              .
+            </p>
             <button type="submit" style={{ padding: "8px 16px" }}>
               Registrati e richiedi accesso
             </button>
