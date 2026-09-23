@@ -3,10 +3,11 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 // Controlla un file caricato tramite il servizio antivirus Cloudmersive,
-// prima che venga salvato su Supabase. Finché la chiave CLOUDMERSIVE_API_KEY
-// non è impostata su Vercel, il controllo viene semplicemente saltato
-// (il file passa, ma segnato come "non verificato") — così questa funzione
-// non blocca mai i caricamenti finché non colleghiamo davvero il servizio.
+// prima che venga salvato su Supabase. Per sicurezza: se il controllo non
+// può essere completato per qualsiasi motivo (chiave mancante, servizio
+// irraggiungibile, errore di rete), il file NON viene considerato sicuro
+// e il caricamento viene bloccato — meglio bloccare un caricamento in più
+// che rischiare di far passare un file infetto.
 export async function POST(request: Request) {
   const chiaveApi = process.env.CLOUDMERSIVE_API_KEY;
 
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
   }
 
   if (!chiaveApi) {
-    return NextResponse.json({ pulito: true, verificato: false });
+    return NextResponse.json({ pulito: false, verificato: false });
   }
 
   try {
@@ -32,9 +33,7 @@ export async function POST(request: Request) {
     });
 
     if (!risposta.ok) {
-      // Se il servizio antivirus non risponde, non blocchiamo il lavoro
-      // del cantiere: lasciamo passare, ma segnaliamo "non verificato".
-      return NextResponse.json({ pulito: true, verificato: false });
+      return NextResponse.json({ pulito: false, verificato: false });
     }
 
     const risultato = await risposta.json();
@@ -43,6 +42,6 @@ export async function POST(request: Request) {
       verificato: true,
     });
   } catch {
-    return NextResponse.json({ pulito: true, verificato: false });
+    return NextResponse.json({ pulito: false, verificato: false });
   }
 }
