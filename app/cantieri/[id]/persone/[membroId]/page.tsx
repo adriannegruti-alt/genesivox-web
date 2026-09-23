@@ -6,7 +6,6 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
 const RUOLI = [
-  { value: "committente", label: "Committente" },
   { value: "cse_csp", label: "CSE / CSP" },
   { value: "rspp", label: "RSPP" },
   { value: "capocantiere", label: "Capocantiere" },
@@ -130,6 +129,12 @@ export default function RuoliAttivitaPage() {
       <p style={{ color: "#666" }}>Ruolo principale: <strong>{membro.ruolo}</strong></p>
 
       {errore && <p style={{ color: "red" }}>{errore}</p>}
+
+      <div style={{ backgroundColor: "#fff8e1", border: "1px solid #fbbc04", borderRadius: 8, padding: 12, marginBottom: 20, fontSize: 13 }}>
+        I ruoli <strong>Committente</strong> e <strong>Impresa edile</strong> non si attivano più da qui: la persona
+        deve richiederli dalla propria pagina in "Imprese e subappaltatori", e tu (o l'amministratore) dovrai
+        approvarli da "✅ Richieste di ruolo" nel menu del cantiere.
+      </div>
 
       <h3>Ruoli aggiuntivi</h3>
       <p style={{ fontSize: 13, color: "#666" }}>
