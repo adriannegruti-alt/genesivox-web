@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { comprimiImmagine, verificaAntivirus } from "@/lib/caricamentoFile";
+import { comprimiImmagine, verificaAntivirus, validaFile, ACCEPT_INPUT_FILE } from "@/lib/caricamentoFile";
 
 type Documento = {
   id: string;
@@ -59,6 +59,13 @@ export default function DettaglioTipoDocumentoMembroPage() {
     setEsitoAntivirus(null);
 
     const fileDaCaricare = await comprimiImmagine(file);
+
+    const validazione = validaFile(fileDaCaricare);
+    if (!validazione.valido) {
+      setErrore(validazione.errore || "File non valido.");
+      setUploadInCorso(false);
+      return;
+    }
 
     const controllo = await verificaAntivirus(fileDaCaricare);
     if (!controllo.verificato) {
@@ -142,6 +149,7 @@ export default function DettaglioTipoDocumentoMembroPage() {
         {uploadInCorso ? "Caricamento..." : "+ Carica nuovo file"}
         <input
           type="file"
+          accept={ACCEPT_INPUT_FILE}
           style={{ display: "none" }}
           onChange={(e) => {
             const file = e.target.files?.[0];
