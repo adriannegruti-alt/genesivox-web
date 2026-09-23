@@ -29,6 +29,7 @@ export default function PreventiviPage() {
   const [errore, setErrore] = useState<string | null>(null);
   const [uploadInCorso, setUploadInCorso] = useState(false);
   const [utenteId, setUtenteId] = useState<string | null>(null);
+  const [esitoAntivirus, setEsitoAntivirus] = useState<string | null>(null);
 
   const [nomeImpresa, setNomeImpresa] = useState("");
   const [attivita, setAttivita] = useState("");
@@ -88,6 +89,7 @@ export default function PreventiviPage() {
   async function invia(e: React.FormEvent) {
     e.preventDefault();
     setErrore(null);
+    setEsitoAntivirus(null);
 
     if (!file) {
       setErrore("Seleziona il file del preventivo da caricare.");
@@ -105,6 +107,11 @@ export default function PreventiviPage() {
       setUploadInCorso(false);
       return;
     }
+    setEsitoAntivirus(
+      controllo.verificato
+        ? "✅ Controllo antivirus: nessuna minaccia rilevata."
+        : "⚠️ Caricato senza controllo antivirus (servizio non ancora attivo)."
+    );
 
     const percorso = `${cantiereId}/${utenteId}/preventivo_${Date.now()}_${fileDaCaricare.name}`;
 
@@ -367,6 +374,11 @@ export default function PreventiviPage() {
           />
         </div>
         {errore && <p style={{ color: "red" }}>{errore}</p>}
+        {esitoAntivirus && (
+          <p style={{ color: esitoAntivirus.startsWith("✅") ? "#1e7e34" : "#b45309", fontSize: 13 }}>
+            {esitoAntivirus}
+          </p>
+        )}
         <button
           type="submit"
           disabled={uploadInCorso}
