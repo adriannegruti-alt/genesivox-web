@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { comprimiImmagine, verificaAntivirus } from "@/lib/caricamentoFile";
 
 type Documento = {
   id: string;
@@ -60,9 +61,18 @@ export default function DettaglioTipoDocumentoPage() {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) return;
 
-    const percorso = `${cantiereId}/${userData.user.id}/${Date.now()}_${file.name}`;
+    const fileDaCaricare = await comprimiImmagine(file);
 
-    const { error: uploadErr } = await supabase.storage.from("documenti-cantieri").upload(percorso, file);
+    const controllo = await verificaAntivirus(fileDaCaricare);
+    if (!controllo.pulito) {
+      setErrore("Questo file è stato bloccato dal controllo antivirus. Caricamento annullato.");
+      setUploadInCorso(false);
+      return;
+    }
+
+    const percorso = `${cantiereId}/${userData.user.id}/${Date.now()}_${fileDaCaricare.name}`;
+
+    const { error: uploadErr } = await supabase.storage.from("documenti-cantieri").upload(percorso, fileDaCaricare);
     if (uploadErr) {
       setErrore(uploadErr.message);
       setUploadInCorso(false);
@@ -74,7 +84,7 @@ export default function DettaglioTipoDocumentoPage() {
       profilo_id: userData.user.id,
       tipo_documento: tipo.nome,
       storage_path: percorso,
-      nome_file: file.name,
+      nome_file: fileDaCaricare.name,
     });
 
     if (dbErr) setErrore(dbErr.message);
