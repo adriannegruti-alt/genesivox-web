@@ -5,195 +5,240 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
-const RUOLI = [
-  { value: "cse_csp", label: "CSE / CSP" },
-  { value: "rspp", label: "RSPP" },
-  { value: "capocantiere", label: "Capocantiere" },
-  { value: "preposto", label: "Preposto" },
-  { value: "impresa", label: "Impresa" },
-  { value: "lavoratore", label: "Lavoratore" },
-  { value: "asl_ispettorato", label: "ASL / Ispettorato" },
+type TipoDocumento = { id: string; nome: string; obbligatorio: boolean; categoria: string };
+type Documento = { tipo_documento: string };
+
+const RUOLI_RICHIEDIBILI = [
+  { value: "committente", label: "Committente" },
+  { value: "impresa_edile", label: "Impresa edile" },
 ];
 
-// Ruoli che richiedono una nomina/accordo firmato già caricato prima di
-// poter essere assegnati: il nome deve corrispondere esattamente a quello
-// nel catalogo documenti (tabella tipi_documento).
-const DOCUMENTO_RICHIESTO_PER_RUOLO: Record<string, string> = {
-  preposto: "Nomina a Preposto",
-  capocantiere: "Nomina Capocantiere",
-  rspp: "Nomina RSPP",
-};
-
-const ATTIVITA = [
-  "Comitente", "Servizi per la sicurezza", "Noleggio attrezzature edili", "Impresa edile",
-  "Impresa segnaletica stradale", "Agenzia comunicazione visiva", "Sistemi di sicurezza e vigilanza",
-  "Palificazioni e consolidamento terreni", "Elettrico", "Idro-termosanitario",
-  "Movimento terra e scavi", "Trasporto conto terzi edili e gestione rifiuti speciali",
-  "Forniture di calcestruzzo", "Presagomatori di ferro", "Carpenteria edile",
-  "Noleggio e montaggio di gru edili", "Noleggio e montaggio di ponteggi", "Isolamenti termoacustici",
-  "Impermeabilizzazione", "Aziende ascensoristiche", "Aziende sicurezza antincendio",
-  "Imprese di intonacatura", "Imprese di massetti", "Imprese Gessisti",
-  "Imprese di tinteggiatura e verniciatura", "Falegnamerie / Carpenterie interne",
-  "Fabbri / Vetrerie industriali", "Imprese di costruzioni stradali / Betonelle / Asfaltisti",
-  "Imprese di scavi", "Aziende di giardinaggio", "Imprese di pulizie",
-];
-
-export default function RuoliAttivitaPage() {
+export default function DocumentiMembroPage() {
   const params = useParams();
   const cantiereId = params.id as string;
-  const membroId = params.membroId as string;
+  const profiloId = params.profiloId as string;
 
+  const [cantiere, setCantiere] = useState<any>(null);
   const [membro, setMembro] = useState<any>(null);
-  const [ruoliExtra, setRuoliExtra] = useState<string[]>([]);
-  const [attivitaExtra, setAttivitaExtra] = useState<string[]>([]);
+  const [ruoliCompleti, setRuoliCompleti] = useState<string[]>([]);
+  const [tipiRichiesti, setTipiRichiesti] = useState<TipoDocumento[]>([]);
+  const [documentiCaricati, setDocumentiCaricati] = useState<Documento[]>([]);
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
 
+  const [utenteId, setUtenteId] = useState<string | null>(null);
+  const [richiesteRuolo, setRichiesteRuolo] = useState<{ ruolo: string; stato: string }[]>([]);
+  const [inviandoRichiesta, setInviandoRichiesta] = useState<string | null>(null);
+  const [messaggioRichiesta, setMessaggioRichiesta] = useState<string | null>(null);
+
   async function carica() {
-    const { data: m } = await supabase
+    setErrore(null);
+
+    const { data: userData } = await supabase.auth.getUser();
+    setUtenteId(userData?.user?.id ?? null);
+
+    const { data: c } = await supabase.from("cantieri").select("id, nome").eq("id", cantiereId).single();
+    setCantiere(c);
+
+    const { data: m, error: mErr } = await supabase
       .from("cantiere_membri")
-      .select("id, profilo_id, ruolo, attivita, profili!cantiere_membri_profilo_id_fkey(email)")
-      .eq("id", membroId)
-      .single();
+      .select("id, ruolo, nome_impresa, attivita, profili!cantiere_membri_profilo_id_fkey(email)")
+      .eq("cantiere_id", cantiereId)
+      .eq("profilo_id", profiloId)
+      .maybeSingle();
+
+    if (mErr || !m) {
+      setErrore("Non hai i permessi per vedere questa pagina, o la persona non è membro del cantiere.");
+      setCaricamento(false);
+      return;
+    }
     setMembro(m);
 
-    const { data: ruoli } = await supabase.from("membro_ruoli").select("ruolo").eq("membro_id", membroId);
-    setRuoliExtra((ruoli || []).map((r) => r.ruolo));
+    // Ruolo principale + ruoli extra assegnati da "Ruoli extra": qui li combiniamo
+    // sia per capire quali documenti servono, sia per mostrarli tutti nella pagina.
+    const { data: ruoliExtra } = await supabase.from("membro_ruoli").select("ruolo").eq("membro_id", m.id);
+    const tuttiIRuoli = Array.from(new Set([m.ruolo, ...(ruoliExtra || []).map((r) => r.ruolo)]));
+    setRuoliCompleti(tuttiIRuoli);
 
-    const { data: attivita } = await supabase.from("membro_attivita").select("attivita").eq("membro_id", membroId);
-    setAttivitaExtra((attivita || []).map((a) => a.attivita));
+    // Richieste di ruolo (Committente / Impresa edile) già inviate da questa persona,
+    // per non far ripetere una richiesta già in corso o già approvata.
+    const { data: richieste } = await supabase
+      .from("richieste_ruolo")
+      .select("ruolo, stato")
+      .eq("cantiere_id", cantiereId)
+      .eq("membro_id", m.id);
+    setRichiesteRuolo(richieste || []);
+
+    const { data: tipi } = await supabase
+      .from("tipi_documento")
+      .select("id, nome, obbligatorio, categoria")
+      .in("ruolo", tuttiIRuoli)
+      .order("obbligatorio", { ascending: false });
+
+    const tipiUnici = Array.from(new Map((tipi || []).map((t) => [t.nome, t])).values());
+    setTipiRichiesti(tipiUnici);
+
+    const { data: docs } = await supabase
+      .from("documenti")
+      .select("tipo_documento")
+      .eq("cantiere_id", cantiereId)
+      .eq("profilo_id", profiloId);
+    setDocumentiCaricati(docs || []);
 
     setCaricamento(false);
   }
 
   useEffect(() => {
-    if (membroId) carica();
-  }, [membroId]);
+    if (cantiereId && profiloId) carica();
+  }, [cantiereId, profiloId]);
 
-  async function toggleRuolo(ruolo: string, attivo: boolean) {
-    setErrore(null);
+  async function richiediRuolo(ruolo: string) {
+    if (!membro) return;
+    setInviandoRichiesta(ruolo);
+    setMessaggioRichiesta(null);
 
-    if (!attivo) {
-      // Si sta per ACCENDERE questo ruolo: se richiede una nomina/accordo,
-      // verifica che il documento sia già stato caricato per questa persona.
-      const documentoRichiesto = DOCUMENTO_RICHIESTO_PER_RUOLO[ruolo];
-      if (documentoRichiesto) {
-        const { count } = await supabase
-          .from("documenti")
-          .select("id", { count: "exact", head: true })
-          .eq("cantiere_id", cantiereId)
-          .eq("profilo_id", membro.profilo_id)
-          .eq("tipo_documento", documentoRichiesto);
+    const { error, data } = await supabase
+      .from("richieste_ruolo")
+      .insert({ cantiere_id: cantiereId, membro_id: membro.id, ruolo })
+      .select("id");
 
-        if (!count) {
-          const etichettaRuolo = RUOLI.find((r) => r.value === ruolo)?.label ?? ruolo;
-          alert(
-            `Per assegnare il ruolo "${etichettaRuolo}" devi prima caricare il documento "${documentoRichiesto}" (nomina/accordo firmato dall'impresa) nella scheda documenti di questa persona.`
-          );
-          return;
-        }
-      }
-    }
-
-    if (attivo) {
-      const { error } = await supabase.from("membro_ruoli").delete().eq("membro_id", membroId).eq("ruolo", ruolo);
-      if (error) return setErrore(error.message);
+    if (error) {
+      setMessaggioRichiesta("Errore: " + error.message);
+    } else if (!data || data.length === 0) {
+      setMessaggioRichiesta("Non è stato possibile inviare la richiesta.");
     } else {
-      const { error } = await supabase.from("membro_ruoli").insert({ membro_id: membroId, ruolo });
-      if (error) return setErrore(error.message);
+      setMessaggioRichiesta("✅ Richiesta inviata. Il creatore del cantiere o l'amministratore la esamineranno a breve.");
     }
-    carica();
-  }
-
-  async function toggleAttivita(attivita: string, attivo: boolean) {
-    setErrore(null);
-    if (attivo) {
-      const { error } = await supabase.from("membro_attivita").delete().eq("membro_id", membroId).eq("attivita", attivita);
-      if (error) return setErrore(error.message);
-    } else {
-      const { error } = await supabase.from("membro_attivita").insert({ membro_id: membroId, attivita });
-      if (error) return setErrore(error.message);
-    }
+    setInviandoRichiesta(null);
     carica();
   }
 
   if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
-  if (!membro) return <p style={{ padding: 24, color: "red" }}>Persona non trovata.</p>;
+  if (errore) return <p style={{ padding: 24, color: "red" }}>{errore}</p>;
+
+  const categorie = ["sicurezza", "tecnico"];
+  const etichettaCategoria: Record<string, string> = {
+    sicurezza: "Documenti di sicurezza",
+    tecnico: "Documenti tecnici",
+  };
+
+  const eLaMiaPagina = utenteId && utenteId === profiloId;
 
   return (
-    <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 600 }}>
+    <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 700 }}>
       <p>
-        <Link href={`/cantieri/${cantiereId}/persone`}>← Torna a Persone assegnate</Link>
+        <Link href={`/cantieri/${cantiereId}/imprese`}>← Torna alle imprese</Link>
       </p>
       <h1>{membro.profili?.email}</h1>
-      <p style={{ color: "#666" }}>Ruolo principale: <strong>{membro.ruolo}</strong></p>
-
-      {errore && <p style={{ color: "red" }}>{errore}</p>}
-
-      <div style={{ backgroundColor: "#fff8e1", border: "1px solid #fbbc04", borderRadius: 8, padding: 12, marginBottom: 20, fontSize: 13 }}>
-        I ruoli <strong>Committente</strong> e <strong>Impresa edile</strong> non si attivano più da qui: la persona
-        deve richiederli dalla propria pagina in "Imprese e subappaltatori", e tu (o l'amministratore) dovrai
-        approvarli da "✅ Richieste di ruolo" nel menu del cantiere.
-      </div>
-
-      <h3>Ruoli aggiuntivi</h3>
-      <p style={{ fontSize: 13, color: "#666" }}>
-        Es. chi si occupa di sicurezza spesso fa anche direzione lavori. Alcuni ruoli (Preposto,
-        Capocantiere) richiedono che la nomina firmata dall'impresa sia già caricata nella scheda
-        documenti di questa persona.
+      <p style={{ color: "#666" }}>
+        {ruoliCompleti.join(", ")} {membro.nome_impresa ? `— ${membro.nome_impresa}` : ""}{" "}
+        {membro.attivita ? `(${membro.attivita})` : ""}
       </p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 24 }}>
-        {RUOLI.filter((r) => r.value !== membro.ruolo).map((r) => {
-          const attivo = ruoliExtra.includes(r.value);
-          const richiedeDocumento = !!DOCUMENTO_RICHIESTO_PER_RUOLO[r.value];
-          return (
-            <button
-              key={r.value}
-              onClick={() => toggleRuolo(r.value, attivo)}
-              title={richiedeDocumento ? `Richiede: ${DOCUMENTO_RICHIESTO_PER_RUOLO[r.value]}` : undefined}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 16,
-                border: attivo ? "1px solid #1a73e8" : "1px solid #ccc",
-                backgroundColor: attivo ? "#1a73e8" : "#fff",
-                color: attivo ? "#fff" : "#333",
-                cursor: "pointer",
-                fontSize: 13,
-              }}
-            >
-              {attivo ? "✓ " : "+ "}
-              {r.label}
-              {richiedeDocumento && !attivo && " 🔒"}
-            </button>
-          );
-        })}
-      </div>
 
-      <h3>Attività aggiuntive</h3>
-      <p style={{ fontSize: 13, color: "#666" }}>Es. un'impresa può occuparsi sia di elettrico che di idraulico.</p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {ATTIVITA.filter((a) => a !== membro.attivita).map((a) => {
-          const attivo = attivitaExtra.includes(a);
-          return (
-            <button
-              key={a}
-              onClick={() => toggleAttivita(a, attivo)}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 16,
-                border: attivo ? "1px solid #34a853" : "1px solid #ccc",
-                backgroundColor: attivo ? "#34a853" : "#fff",
-                color: attivo ? "#fff" : "#333",
-                cursor: "pointer",
-                fontSize: 13,
-              }}
-            >
-              {attivo ? "✓ " : "+ "}
-              {a}
-            </button>
-          );
-        })}
-      </div>
+      {eLaMiaPagina && (
+        <div
+          style={{
+            border: "1px solid #ddd",
+            borderRadius: 8,
+            padding: 16,
+            marginBottom: 24,
+            backgroundColor: "#fafafa",
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>Richiedi un ruolo</h3>
+          <p style={{ fontSize: 13, color: "#666" }}>
+            I ruoli "Committente" e "Impresa edile" danno accesso a tutti i preventivi del cantiere (non solo i tuoi),
+            quindi vanno approvati dal creatore del cantiere o dall'amministratore.
+          </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {RUOLI_RICHIEDIBILI.map((r) => {
+              const giaAssegnato = ruoliCompleti.includes(r.value);
+              const richiestaEsistente = richiesteRuolo.find((x) => x.ruolo === r.value);
+
+              if (giaAssegnato) {
+                return (
+                  <span key={r.value} style={{ padding: "6px 12px", borderRadius: 16, backgroundColor: "#34a853", color: "#fff", fontSize: 13 }}>
+                    ✓ {r.label} (già attivo)
+                  </span>
+                );
+              }
+              if (richiestaEsistente?.stato === "in_attesa") {
+                return (
+                  <span key={r.value} style={{ padding: "6px 12px", borderRadius: 16, backgroundColor: "#fbbc04", color: "#333", fontSize: 13 }}>
+                    ⏳ {r.label} (in attesa di approvazione)
+                  </span>
+                );
+              }
+              if (richiestaEsistente?.stato === "rifiutato") {
+                return (
+                  <button
+                    key={r.value}
+                    disabled={inviandoRichiesta === r.value}
+                    onClick={() => richiediRuolo(r.value)}
+                    style={{ padding: "6px 12px", borderRadius: 16, border: "1px solid #c0392b", backgroundColor: "#fff", color: "#c0392b", fontSize: 13, cursor: "pointer" }}
+                  >
+                    Richiesta rifiutata — Riprova {r.label}
+                  </button>
+                );
+              }
+              return (
+                <button
+                  key={r.value}
+                  disabled={inviandoRichiesta === r.value}
+                  onClick={() => richiediRuolo(r.value)}
+                  style={{ padding: "6px 12px", borderRadius: 16, border: "1px solid #1a73e8", backgroundColor: "#fff", color: "#1a73e8", fontSize: 13, cursor: "pointer" }}
+                >
+                  {inviandoRichiesta === r.value ? "Invio..." : `+ Richiedi ${r.label}`}
+                </button>
+              );
+            })}
+          </div>
+          {messaggioRichiesta && <p style={{ marginTop: 12, fontSize: 13 }}>{messaggioRichiesta}</p>}
+        </div>
+      )}
+
+      {categorie.map((cat) => {
+        const tipiCategoria = tipiRichiesti.filter((t) => t.categoria === cat);
+        if (tipiCategoria.length === 0) return null;
+        return (
+          <div key={cat} style={{ marginTop: 24 }}>
+            <h3>{etichettaCategoria[cat]}</h3>
+            {tipiCategoria.map((tipo) => {
+              const numeroFile = documentiCaricati.filter((d) => d.tipo_documento === tipo.nome).length;
+              return (
+                <Link
+                  key={tipo.id}
+                  href={`/cantieri/${cantiereId}/imprese/${profiloId}/${tipo.id}`}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: 12,
+                    marginBottom: 8,
+                    border: "1px solid #ddd",
+                    borderRadius: 8,
+                    textDecoration: "none",
+                    color: "inherit",
+                  }}
+                >
+                  <div>
+                    <strong>{tipo.nome}</strong>{" "}
+                    {tipo.obbligatorio ? (
+                      <span style={{ color: "#c0392b", fontSize: 12 }}>(obbligatorio)</span>
+                    ) : (
+                      <span style={{ color: "#888", fontSize: 12 }}>(condizionale)</span>
+                    )}
+                    <div style={{ fontSize: 13, color: numeroFile > 0 ? "green" : "#c0392b" }}>
+                      {numeroFile > 0 ? `${numeroFile} file caricati` : "Mancante"}
+                    </div>
+                  </div>
+                  <span style={{ color: "#999" }}>→</span>
+                </Link>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
