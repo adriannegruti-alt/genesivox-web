@@ -8,6 +8,11 @@ import { supabase } from "@/lib/supabaseClient";
 type TipoDocumento = { id: string; nome: string; obbligatorio: boolean; categoria: string };
 type Documento = { tipo_documento: string };
 
+const RUOLI_RICHIEDIBILI = [
+  { value: "committente", label: "Committente" },
+  { value: "impresa_edile", label: "Impresa edile" },
+];
+
 export default function DocumentiMembroPage() {
   const params = useParams();
   const cantiereId = params.id as string;
@@ -21,8 +26,16 @@ export default function DocumentiMembroPage() {
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
 
+  const [utenteId, setUtenteId] = useState<string | null>(null);
+  const [richiesteRuolo, setRichiesteRuolo] = useState<{ ruolo: string; stato: string }[]>([]);
+  const [inviandoRichiesta, setInviandoRichiesta] = useState<string | null>(null);
+  const [messaggioRichiesta, setMessaggioRichiesta] = useState<string | null>(null);
+
   async function carica() {
     setErrore(null);
+
+    const { data: userData } = await supabase.auth.getUser();
+    setUtenteId(userData?.user?.id ?? null);
 
     const { data: c } = await supabase.from("cantieri").select("id, nome").eq("id", cantiereId).single();
     setCantiere(c);
@@ -47,6 +60,15 @@ export default function DocumentiMembroPage() {
     const tuttiIRuoli = Array.from(new Set([m.ruolo, ...(ruoliExtra || []).map((r) => r.ruolo)]));
     setRuoliCompleti(tuttiIRuoli);
 
+    // Richieste di ruolo (Committente / Impresa edile) già inviate da questa persona,
+    // per non far ripetere una richiesta già in corso o già approvata.
+    const { data: richieste } = await supabase
+      .from("richieste_ruolo")
+      .select("ruolo, stato")
+      .eq("cantiere_id", cantiereId)
+      .eq("membro_id", m.id);
+    setRichiesteRuolo(richieste || []);
+
     const { data: tipi } = await supabase
       .from("tipi_documento")
       .select("id, nome, obbligatorio, categoria")
@@ -70,6 +92,27 @@ export default function DocumentiMembroPage() {
     if (cantiereId && profiloId) carica();
   }, [cantiereId, profiloId]);
 
+  async function richiediRuolo(ruolo: string) {
+    if (!membro) return;
+    setInviandoRichiesta(ruolo);
+    setMessaggioRichiesta(null);
+
+    const { error, data } = await supabase
+      .from("richieste_ruolo")
+      .insert({ cantiere_id: cantiereId, membro_id: membro.id, ruolo })
+      .select("id");
+
+    if (error) {
+      setMessaggioRichiesta("Errore: " + error.message);
+    } else if (!data || data.length === 0) {
+      setMessaggioRichiesta("Non è stato possibile inviare la richiesta.");
+    } else {
+      setMessaggioRichiesta("✅ Richiesta inviata. Il creatore del cantiere o l'amministratore la esamineranno a breve.");
+    }
+    setInviandoRichiesta(null);
+    carica();
+  }
+
   if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
   if (errore) return <p style={{ padding: 24, color: "red" }}>{errore}</p>;
 
@@ -78,6 +121,8 @@ export default function DocumentiMembroPage() {
     sicurezza: "Documenti di sicurezza",
     tecnico: "Documenti tecnici",
   };
+
+  const eLaMiaPagina = utenteId && utenteId === profiloId;
 
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 700 }}>
@@ -89,6 +134,68 @@ export default function DocumentiMembroPage() {
         {ruoliCompleti.join(", ")} {membro.nome_impresa ? `— ${membro.nome_impresa}` : ""}{" "}
         {membro.attivita ? `(${membro.attivita})` : ""}
       </p>
+
+      {eLaMiaPagina && (
+        <div
+          style={{
+            border: "1px solid #ddd",
+            borderRadius: 8,
+            padding: 16,
+            marginBottom: 24,
+            backgroundColor: "#fafafa",
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>Richiedi un ruolo</h3>
+          <p style={{ fontSize: 13, color: "#666" }}>
+            I ruoli "Committente" e "Impresa edile" danno accesso a tutti i preventivi del cantiere (non solo i tuoi),
+            quindi vanno approvati dal creatore del cantiere o dall'amministratore.
+          </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {RUOLI_RICHIEDIBILI.map((r) => {
+              const giaAssegnato = ruoliCompleti.includes(r.value);
+              const richiestaEsistente = richiesteRuolo.find((x) => x.ruolo === r.value);
+
+              if (giaAssegnato) {
+                return (
+                  <span key={r.value} style={{ padding: "6px 12px", borderRadius: 16, backgroundColor: "#34a853", color: "#fff", fontSize: 13 }}>
+                    ✓ {r.label} (già attivo)
+                  </span>
+                );
+              }
+              if (richiestaEsistente?.stato === "in_attesa") {
+                return (
+                  <span key={r.value} style={{ padding: "6px 12px", borderRadius: 16, backgroundColor: "#fbbc04", color: "#333", fontSize: 13 }}>
+                    ⏳ {r.label} (in attesa di approvazione)
+                  </span>
+                );
+              }
+              if (richiestaEsistente?.stato === "rifiutato") {
+                return (
+                  <button
+                    key={r.value}
+                    disabled={inviandoRichiesta === r.value}
+                    onClick={() => richiediRuolo(r.value)}
+                    style={{ padding: "6px 12px", borderRadius: 16, border: "1px solid #c0392b", backgroundColor: "#fff", color: "#c0392b", fontSize: 13, cursor: "pointer" }}
+                  >
+                    Richiesta rifiutata — Riprova {r.label}
+                  </button>
+                );
+              }
+              return (
+                <button
+                  key={r.value}
+                  disabled={inviandoRichiesta === r.value}
+                  onClick={() => richiediRuolo(r.value)}
+                  style={{ padding: "6px 12px", borderRadius: 16, border: "1px solid #1a73e8", backgroundColor: "#fff", color: "#1a73e8", fontSize: 13, cursor: "pointer" }}
+                >
+                  {inviandoRichiesta === r.value ? "Invio..." : `+ Richiedi ${r.label}`}
+                </button>
+              );
+            })}
+          </div>
+          {messaggioRichiesta && <p style={{ marginTop: 12, fontSize: 13 }}>{messaggioRichiesta}</p>}
+        </div>
+      )}
 
       {categorie.map((cat) => {
         const tipiCategoria = tipiRichiesti.filter((t) => t.categoria === cat);
