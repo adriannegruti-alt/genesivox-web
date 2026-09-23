@@ -102,16 +102,17 @@ export default function PreventiviPage() {
     const fileDaCaricare = await comprimiImmagine(file);
 
     const controllo = await verificaAntivirus(fileDaCaricare);
-    if (!controllo.pulito) {
-      setErrore("Questo file è stato bloccato dal controllo antivirus. Caricamento annullato.");
+    if (!controllo.verificato) {
+      setErrore("Il controllo antivirus non è disponibile in questo momento. Riprova tra qualche minuto.");
       setUploadInCorso(false);
       return;
     }
-    setEsitoAntivirus(
-      controllo.verificato
-        ? "✅ Controllo antivirus: nessuna minaccia rilevata."
-        : "⚠️ Caricato senza controllo antivirus (servizio non ancora attivo)."
-    );
+    if (!controllo.pulito) {
+      setErrore("Questo file è stato bloccato dal controllo antivirus: potrebbe contenere una minaccia.");
+      setUploadInCorso(false);
+      return;
+    }
+    setEsitoAntivirus("✅ Controllo antivirus: nessuna minaccia rilevata.");
 
     const percorso = `${cantiereId}/${utenteId}/preventivo_${Date.now()}_${fileDaCaricare.name}`;
 
