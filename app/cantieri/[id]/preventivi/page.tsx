@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { comprimiImmagine, verificaAntivirus } from "@/lib/caricamentoFile";
 
 type Preventivo = {
   id: string;
@@ -96,9 +97,18 @@ export default function PreventiviPage() {
 
     setUploadInCorso(true);
 
-    const percorso = `${cantiereId}/${utenteId}/preventivo_${Date.now()}_${file.name}`;
+    const fileDaCaricare = await comprimiImmagine(file);
 
-    const { error: uploadErr } = await supabase.storage.from("documenti-cantieri").upload(percorso, file);
+    const controllo = await verificaAntivirus(fileDaCaricare);
+    if (!controllo.pulito) {
+      setErrore("Questo file è stato bloccato dal controllo antivirus. Caricamento annullato.");
+      setUploadInCorso(false);
+      return;
+    }
+
+    const percorso = `${cantiereId}/${utenteId}/preventivo_${Date.now()}_${fileDaCaricare.name}`;
+
+    const { error: uploadErr } = await supabase.storage.from("documenti-cantieri").upload(percorso, fileDaCaricare);
     if (uploadErr) {
       setErrore(uploadErr.message);
       setUploadInCorso(false);
@@ -112,7 +122,7 @@ export default function PreventiviPage() {
       attivita: attivita || null,
       referente: referente || null,
       storage_path: percorso,
-      nome_file: file.name,
+      nome_file: fileDaCaricare.name,
     });
 
     if (dbErr) {
