@@ -5,9 +5,6 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
-// Ruoli selezionabili qui: Committente e Impresa edile NON ci sono più,
-// perché ora si ottengono solo tramite richiesta + approvazione
-// (pagina della persona in "Imprese e subappaltatori" -> "Richieste di ruolo").
 const RUOLI = [
   { value: "cse_csp", label: "CSE / CSP" },
   { value: "rspp", label: "RSPP" },
@@ -18,388 +15,188 @@ const RUOLI = [
   { value: "asl_ispettorato", label: "ASL / Ispettorato" },
 ];
 
-// Solo per MOSTRARE correttamente l'etichetta di una persona che ha già
-// (da prima, o perché sei admin) il ruolo Committente/Impresa edile.
-const ETICHETTE_TUTTI_I_RUOLI: Record<string, string> = {
-  committente: "Committente",
-  impresa_edile: "Impresa edile",
-  ...Object.fromEntries(RUOLI.map((r) => [r.value, r.label])),
+// Ruoli che richiedono una nomina/accordo firmato già caricato prima di
+// poter essere assegnati: il nome deve corrispondere esattamente a quello
+// nel catalogo documenti (tabella tipi_documento).
+const DOCUMENTO_RICHIESTO_PER_RUOLO: Record<string, string> = {
+  preposto: "Nomina a Preposto",
+  capocantiere: "Nomina Capocantiere",
+  rspp: "Nomina RSPP",
 };
 
-type Membro = {
-  id: string;
-  ruolo: string;
-  nome_impresa: string | null;
-  attivita: string | null;
-  profili: { email: string; impresa: string | null } | null;
-};
+// "Comitente" e "Impresa edile" non sono più qui: sono ruoli veri con autorizzazioni
+// (vedi la sezione "Richiedi ruolo" nella pagina della persona in Imprese e subappaltatori),
+// non semplici etichette di attività commerciale.
+const ATTIVITA = [
+  "Servizi per la sicurezza", "Noleggio attrezzature edili",
+  "Impresa segnaletica stradale", "Agenzia comunicazione visiva", "Sistemi di sicurezza e vigilanza",
+  "Palificazioni e consolidamento terreni", "Elettrico", "Idro-termosanitario",
+  "Movimento terra e scavi", "Trasporto conto terzi edili e gestione rifiuti speciali",
+  "Forniture di calcestruzzo", "Presagomatori di ferro", "Carpenteria edile",
+  "Noleggio e montaggio di gru edili", "Noleggio e montaggio di ponteggi", "Isolamenti termoacustici",
+  "Impermeabilizzazione", "Aziende ascensoristiche", "Aziende sicurezza antincendio",
+  "Imprese di intonacatura", "Imprese di massetti", "Imprese Gessisti",
+  "Imprese di tinteggiatura e verniciatura", "Falegnamerie / Carpenterie interne",
+  "Fabbri / Vetrerie industriali", "Imprese di costruzioni stradali / Betonelle / Asfaltisti",
+  "Imprese di scavi", "Aziende di giardinaggio", "Imprese di pulizie",
+];
 
-function impresaVisualizzata(m: Membro): string {
-  return m.nome_impresa || m.profili?.impresa || "—";
-}
-
-export default function CantiereDettaglioPage() {
+export default function RuoliAttivitaPage() {
   const params = useParams();
   const cantiereId = params.id as string;
+  const membroId = params.membroId as string;
 
-  const [cantiere, setCantiere] = useState<any>(null);
-  const [membri, setMembri] = useState<Membro[]>([]);
-  const [emailNuovo, setEmailNuovo] = useState("");
-  const [ruoloNuovo, setRuoloNuovo] = useState("lavoratore");
-  const [nomeImpresaNuovo, setNomeImpresaNuovo] = useState("");
-  const [attivitaNuovo, setAttivitaNuovo] = useState("");
-  const [impresaModificataAMano, setImpresaModificataAMano] = useState(false);
-  const [attivitaModificataAMano, setAttivitaModificataAMano] = useState(false);
-  const [ricercaAutocompletamento, setRicercaAutocompletamento] = useState(false);
+  const [membro, setMembro] = useState<any>(null);
+  const [ruoliExtra, setRuoliExtra] = useState<string[]>([]);
+  const [attivitaExtra, setAttivitaExtra] = useState<string[]>([]);
+  const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
-  const [messaggio, setMessaggio] = useState<string | null>(null);
 
-  const [modificaId, setModificaId] = useState<string | null>(null);
-  const [ruoloModifica, setRuoloModifica] = useState("");
-  const [nomeImpresaModifica, setNomeImpresaModifica] = useState("");
-  const [attivitaModifica, setAttivitaModifica] = useState("");
+  async function carica() {
+    const { data: m } = await supabase
+      .from("cantiere_membri")
+      .select("id, profilo_id, ruolo, attivita, profili!cantiere_membri_profilo_id_fkey(email)")
+      .eq("id", membroId)
+      .single();
+    setMembro(m);
 
-  // Quando si scrive l'email e si esce dal campo, recupera impresa e attività
-  // con cui quella persona si era già registrata (dal suo account o da un
-  // altro cantiere), per non doverle reinserire a mano se non serve.
-  async function autocompletaDaEmail() {
-    if (!emailNuovo) return;
+    const { data: ruoli } = await supabase.from("membro_ruoli").select("ruolo").eq("membro_id", membroId);
+    setRuoliExtra((ruoli || []).map((r) => r.ruolo));
 
-    const { data: risultati } = await supabase.rpc("cerca_profilo_per_email", {
-      email_ricerca: emailNuovo.trim(),
-    });
-    const profilo = risultati?.[0];
+    const { data: attivita } = await supabase.from("membro_attivita").select("attivita").eq("membro_id", membroId);
+    setAttivitaExtra((attivita || []).map((a) => a.attivita));
 
-    if (!profilo) return;
+    setCaricamento(false);
+  }
 
-    setRicercaAutocompletamento(true);
+  useEffect(() => {
+    if (membroId) carica();
+  }, [membroId]);
 
-    if (profilo.impresa && !impresaModificataAMano) {
-      setNomeImpresaNuovo(profilo.impresa);
-    }
+  async function toggleRuolo(ruolo: string, attivo: boolean) {
+    setErrore(null);
 
-    if (!attivitaModificataAMano) {
-      // Priorità 1: attività di base impostata dall'utente in Impostazioni account.
-      // Priorità 2 (solo se non l'ha impostata): l'ultima attività usata in un altro cantiere.
-      if (profilo.attivita_base) {
-        setAttivitaNuovo(profilo.attivita_base);
-      } else {
-        const { data: ultimoMembro } = await supabase
-          .from("cantiere_membri")
-          .select("attivita")
-          .eq("profilo_id", profilo.id)
-          .not("attivita", "is", null)
-          .order("creato_il", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+    if (!attivo) {
+      // Si sta per ACCENDERE questo ruolo: se richiede una nomina/accordo,
+      // verifica che il documento sia già stato caricato per questa persona.
+      const documentoRichiesto = DOCUMENTO_RICHIESTO_PER_RUOLO[ruolo];
+      if (documentoRichiesto) {
+        const { count } = await supabase
+          .from("documenti")
+          .select("id", { count: "exact", head: true })
+          .eq("cantiere_id", cantiereId)
+          .eq("profilo_id", membro.profilo_id)
+          .eq("tipo_documento", documentoRichiesto);
 
-        if (ultimoMembro?.attivita) {
-          setAttivitaNuovo(ultimoMembro.attivita);
+        if (!count) {
+          const etichettaRuolo = RUOLI.find((r) => r.value === ruolo)?.label ?? ruolo;
+          alert(
+            `Per assegnare il ruolo "${etichettaRuolo}" devi prima caricare il documento "${documentoRichiesto}" (nomina/accordo firmato dall'impresa) nella scheda documenti di questa persona.`
+          );
+          return;
         }
       }
     }
 
-    setRicercaAutocompletamento(false);
+    if (attivo) {
+      const { error } = await supabase.from("membro_ruoli").delete().eq("membro_id", membroId).eq("ruolo", ruolo);
+      if (error) return setErrore(error.message);
+    } else {
+      const { error } = await supabase.from("membro_ruoli").insert({ membro_id: membroId, ruolo });
+      if (error) return setErrore(error.message);
+    }
+    carica();
   }
 
-  async function carica() {
-    const { data: c } = await supabase
-      .from("cantieri")
-      .select("id, nome, indirizzo, qr_token")
-      .eq("id", cantiereId)
-      .single();
-    setCantiere(c);
-
-    const { data: m, error: mErr } = await supabase
-      .from("cantiere_membri")
-      .select("id, ruolo, nome_impresa, attivita, stato, profili!cantiere_membri_profilo_id_fkey(email, impresa)")
-      .eq("cantiere_id", cantiereId);
-
-    if (mErr) console.error("Errore caricamento membri:", mErr);
-    setMembri((m as unknown as Membro[]) || []);
-  }
-
-  useEffect(() => {
-    if (cantiereId) carica();
-  }, [cantiereId]);
-
-  async function aggiungiPersona(e: React.FormEvent) {
-    e.preventDefault();
+  async function toggleAttivita(attivita: string, attivo: boolean) {
     setErrore(null);
-    setMessaggio(null);
-
-    // Cerca se esiste già un profilo con questa email (ignora maiuscole/minuscole e spazi)
-    const { data: risultatiRicerca } = await supabase.rpc("cerca_profilo_per_email", {
-      email_ricerca: emailNuovo.trim(),
-    });
-    const profiloEsistente = risultatiRicerca?.[0];
-
-    if (!profiloEsistente) {
-      setErrore(
-        "Questa persona non ha ancora un account GENESIVOX. Creala prima da Supabase (Authentication → Add user), poi riprova qui."
-      );
-      return;
-    }
-
-    const { error } = await supabase.from("cantiere_membri").insert({
-      cantiere_id: cantiereId,
-      profilo_id: profiloEsistente.id,
-      ruolo: ruoloNuovo,
-      nome_impresa: nomeImpresaNuovo || null,
-      attivita: attivitaNuovo || null,
-    });
-
-    if (error) {
-      setErrore(error.message);
-      return;
-    }
-
-    setMessaggio("Persona aggiunta al cantiere.");
-    setEmailNuovo("");
-    setNomeImpresaNuovo("");
-    setAttivitaNuovo("");
-    setImpresaModificataAMano(false);
-    setAttivitaModificataAMano(false);
-    carica();
-  }
-
-  if (!cantiere) return <p style={{ padding: 24 }}>Caricamento...</p>;
-
-  const membriApprovati = membri.filter((m: any) => m.stato !== "in_attesa");
-  const membriInAttesa = membri.filter((m: any) => m.stato === "in_attesa");
-
-  async function approva(membroId: string) {
-    await supabase.from("cantiere_membri").update({ stato: "approvato" }).eq("id", membroId);
-    carica();
-  }
-
-  function iniziaModifica(m: Membro) {
-    setModificaId(m.id);
-    // Se questa persona ha già (da prima) il ruolo Committente/Impresa edile,
-    // non è tra le opzioni modificabili: lasciamo il valore così com'è nel
-    // menu a tendina non lo troverà e mostrerà semplicemente la prima opzione,
-    // ma senza permettere di riassegnarlo per errore ad un'altra persona.
-    setRuoloModifica(m.ruolo);
-    setNomeImpresaModifica(m.nome_impresa ?? "");
-    setAttivitaModifica(m.attivita ?? "");
-  }
-
-  async function salvaModifica(id: string) {
-    const { data, error } = await supabase
-      .from("cantiere_membri")
-      .update({
-        ruolo: ruoloModifica,
-        nome_impresa: nomeImpresaModifica || null,
-        attivita: attivitaModifica || null,
-      })
-      .eq("id", id)
-      .select("id");
-
-    if (error) {
-      if (error.message?.includes("richiesta e approvazione")) {
-        alert("Committente e Impresa edile non si possono più assegnare da qui: la persona deve farne richiesta dalla propria pagina, e tu la approvi da \"Richieste di ruolo\".");
-      } else {
-        alert("Errore nel salvare: " + error.message);
-      }
-      return;
-    }
-    if (!data || data.length === 0) {
-      alert("Non hai i permessi per modificare questa persona in questo cantiere.");
-      return;
-    }
-    setModificaId(null);
-    carica();
-  }
-
-  async function eliminaMembro(id: string, nomeVisualizzato: string) {
-    if (!confirm(`Rimuovere "${nomeVisualizzato}" da questo cantiere? Non avrà più accesso ai suoi dati.`)) return;
-
-    const { data, error } = await supabase.from("cantiere_membri").delete().eq("id", id).select("id");
-    if (error) {
-      alert("Errore nell'eliminare: " + error.message);
-      return;
-    }
-    if (!data || data.length === 0) {
-      alert("Non hai i permessi per rimuovere questa persona da questo cantiere.");
-      return;
+    if (attivo) {
+      const { error } = await supabase.from("membro_attivita").delete().eq("membro_id", membroId).eq("attivita", attivita);
+      if (error) return setErrore(error.message);
+    } else {
+      const { error } = await supabase.from("membro_attivita").insert({ membro_id: membroId, attivita });
+      if (error) return setErrore(error.message);
     }
     carica();
   }
+
+  if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
+  if (!membro) return <p style={{ padding: 24, color: "red" }}>Persona non trovata.</p>;
 
   return (
-    <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 700 }}>
-      <h1>Persone assegnate</h1>
+    <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 600 }}>
+      <p>
+        <Link href={`/cantieri/${cantiereId}/persone`}>← Torna a Persone assegnate</Link>
+      </p>
+      <h1>{membro.profili?.email}</h1>
+      <p style={{ color: "#666" }}>Ruolo principale: <strong>{membro.ruolo}</strong></p>
 
-      {membriInAttesa.length > 0 && (
-        <div style={{ margin: "16px 0", padding: 16, border: "1px solid #f0ad4e", borderRadius: 8 }}>
-          <h3 style={{ marginTop: 0 }}>Richieste in attesa di approvazione</h3>
-          {membriInAttesa.map((m: any) => (
-            <div key={m.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
-              <span>
-                {m.profili?.email} — {ETICHETTE_TUTTI_I_RUOLI[m.ruolo] ?? m.ruolo} — {m.nome_impresa} ({m.attivita})
-              </span>
-              <button onClick={() => approva(m.id)} style={{ padding: "4px 12px" }}>
-                Approva
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      {errore && <p style={{ color: "red" }}>{errore}</p>}
 
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 24 }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-            <th style={{ padding: 8 }}>Email</th>
-            <th style={{ padding: 8 }}>Ruolo</th>
-            <th style={{ padding: 8 }}>Impresa</th>
-            <th style={{ padding: 8 }}>Attività</th>
-            <th style={{ padding: 8 }}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {membriApprovati.map((m) =>
-            modificaId === m.id ? (
-              <tr key={m.id} style={{ borderBottom: "1px solid #eee", backgroundColor: "#f7fafe" }}>
-                <td style={{ padding: 8 }}>{m.profili?.email}</td>
-                <td style={{ padding: 8 }}>
-                  <select
-                    value={ruoloModifica}
-                    onChange={(e) => setRuoloModifica(e.target.value)}
-                    style={{ padding: 6, width: "100%" }}
-                  >
-                    {RUOLI.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td style={{ padding: 8 }}>
-                  <input
-                    value={nomeImpresaModifica}
-                    onChange={(e) => setNomeImpresaModifica(e.target.value)}
-                    style={{ padding: 6, width: "100%" }}
-                  />
-                </td>
-                <td style={{ padding: 8 }}>
-                  <input
-                    value={attivitaModifica}
-                    onChange={(e) => setAttivitaModifica(e.target.value)}
-                    style={{ padding: 6, width: "100%" }}
-                  />
-                </td>
-                <td style={{ padding: 8, whiteSpace: "nowrap" }}>
-                  <button onClick={() => salvaModifica(m.id)} style={{ padding: "4px 10px", marginRight: 6 }}>
-                    Salva
-                  </button>
-                  <button onClick={() => setModificaId(null)} style={{ padding: "4px 10px" }}>
-                    Annulla
-                  </button>
-                </td>
-              </tr>
-            ) : (
-              <tr key={m.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td style={{ padding: 8 }}>{m.profili?.email}</td>
-                <td style={{ padding: 8 }}>{ETICHETTE_TUTTI_I_RUOLI[m.ruolo] ?? m.ruolo}</td>
-                <td style={{ padding: 8 }}>{impresaVisualizzata(m)}</td>
-                <td style={{ padding: 8 }}>{m.attivita ?? "—"}</td>
-                <td style={{ padding: 8, whiteSpace: "nowrap" }}>
-                  <Link href={`/cantieri/${cantiereId}/persone/${m.id}`} style={{ fontSize: 13, marginRight: 10 }}>
-                    Ruoli extra →
-                  </Link>
-                  <button
-                    onClick={() => iniziaModifica(m)}
-                    style={{ padding: "4px 10px", marginRight: 6, fontSize: 13 }}
-                  >
-                    Modifica
-                  </button>
-                  <button
-                    onClick={() => eliminaMembro(m.id, impresaVisualizzata(m) !== "—" ? impresaVisualizzata(m) : m.profili?.email || "questa persona")}
-                    style={{
-                      padding: "4px 10px",
-                      fontSize: 13,
-                      color: "#c0392b",
-                      border: "1px solid #c0392b",
-                      borderRadius: 4,
-                      background: "none",
-                    }}
-                  >
-                    Elimina
-                  </button>
-                </td>
-              </tr>
-            )
-          )}
-        </tbody>
-      </table>
+      <div style={{ backgroundColor: "#fff8e1", border: "1px solid #fbbc04", borderRadius: 8, padding: 12, marginBottom: 20, fontSize: 13 }}>
+        I ruoli <strong>Committente</strong> e <strong>Impresa edile</strong> non si attivano più da qui: la persona
+        deve richiederli dalla propria pagina in "Imprese e subappaltatori", e tu (o l'amministratore) dovrai
+        approvarli da "✅ Richieste di ruolo" nel menu del cantiere.
+      </div>
 
-      <form onSubmit={aggiungiPersona} style={{ padding: 16, border: "1px solid #ddd", borderRadius: 8 }}>
-        <h3 style={{ marginTop: 0 }}>Aggiungi persona</h3>
-        <div style={{ marginBottom: 8 }}>
-          <input
-            type="email"
-            placeholder="Email della persona (deve avere già un account)"
-            value={emailNuovo}
-            onChange={(e) => setEmailNuovo(e.target.value)}
-            onBlur={autocompletaDaEmail}
-            required
-            style={{ width: "100%", padding: 8 }}
-          />
-          {ricercaAutocompletamento && (
-            <p style={{ fontSize: 12, color: "#666", margin: "4px 0 0" }}>Recupero dati della persona...</p>
-          )}
-        </div>
-        <div style={{ marginBottom: 8 }}>
-          <select
-            value={ruoloNuovo}
-            onChange={(e) => {
-              const nuovoRuolo = e.target.value;
-              setRuoloNuovo(nuovoRuolo);
-              // Se il campo Attività è ancora vuoto e non è stato modificato a mano,
-              // lo riempie con il ruolo appena scelto (resta comunque modificabile).
-              if (!attivitaNuovo && !attivitaModificataAMano) {
-                const etichetta = RUOLI.find((r) => r.value === nuovoRuolo)?.label;
-                if (etichetta) setAttivitaNuovo(etichetta);
-              }
-            }}
-            style={{ width: "100%", padding: 8 }}
-          >
-            {RUOLI.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-          <p style={{ fontSize: 12, color: "#888", margin: "4px 0 0" }}>
-            Committente e Impresa edile non sono qui: la persona li richiede dalla propria pagina, poi tu li approvi.
-          </p>
-        </div>
-        <div style={{ marginBottom: 8 }}>
-          <input
-            placeholder="Nome impresa"
-            value={nomeImpresaNuovo}
-            onChange={(e) => {
-              setNomeImpresaNuovo(e.target.value);
-              setImpresaModificataAMano(true);
-            }}
-            style={{ width: "100%", padding: 8 }}
-          />
-        </div>
-        <div style={{ marginBottom: 8 }}>
-          <input
-            placeholder="Attività svolta (es. idraulico, elettricista, piastrellista)"
-            value={attivitaNuovo}
-            onChange={(e) => {
-              setAttivitaNuovo(e.target.value);
-              setAttivitaModificataAMano(true);
-            }}
-            style={{ width: "100%", padding: 8 }}
-          />
-        </div>
-        {errore && <p style={{ color: "red" }}>{errore}</p>}
-        {messaggio && <p style={{ color: "green" }}>{messaggio}</p>}
-        <button type="submit" style={{ padding: "8px 16px" }}>Aggiungi</button>
-      </form>
+      <h3>Ruoli aggiuntivi</h3>
+      <p style={{ fontSize: 13, color: "#666" }}>
+        Es. chi si occupa di sicurezza spesso fa anche direzione lavori. Alcuni ruoli (Preposto,
+        Capocantiere) richiedono che la nomina firmata dall'impresa sia già caricata nella scheda
+        documenti di questa persona.
+      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 24 }}>
+        {RUOLI.filter((r) => r.value !== membro.ruolo).map((r) => {
+          const attivo = ruoliExtra.includes(r.value);
+          const richiedeDocumento = !!DOCUMENTO_RICHIESTO_PER_RUOLO[r.value];
+          return (
+            <button
+              key={r.value}
+              onClick={() => toggleRuolo(r.value, attivo)}
+              title={richiedeDocumento ? `Richiede: ${DOCUMENTO_RICHIESTO_PER_RUOLO[r.value]}` : undefined}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 16,
+                border: attivo ? "1px solid #1a73e8" : "1px solid #ccc",
+                backgroundColor: attivo ? "#1a73e8" : "#fff",
+                color: attivo ? "#fff" : "#333",
+                cursor: "pointer",
+                fontSize: 13,
+              }}
+            >
+              {attivo ? "✓ " : "+ "}
+              {r.label}
+              {richiedeDocumento && !attivo && " 🔒"}
+            </button>
+          );
+        })}
+      </div>
+
+      <h3>Attività aggiuntive</h3>
+      <p style={{ fontSize: 13, color: "#666" }}>Es. un'impresa può occuparsi sia di elettrico che di idraulico.</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {ATTIVITA.filter((a) => a !== membro.attivita).map((a) => {
+          const attivo = attivitaExtra.includes(a);
+          return (
+            <button
+              key={a}
+              onClick={() => toggleAttivita(a, attivo)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 16,
+                border: attivo ? "1px solid #34a853" : "1px solid #ccc",
+                backgroundColor: attivo ? "#34a853" : "#fff",
+                color: attivo ? "#fff" : "#333",
+                cursor: "pointer",
+                fontSize: 13,
+              }}
+            >
+              {attivo ? "✓ " : "+ "}
+              {a}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
