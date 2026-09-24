@@ -5,8 +5,10 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
+// Ruoli selezionabili qui: Committente e Impresa edile NON ci sono più,
+// perché ora si ottengono solo tramite richiesta + approvazione
+// (pagina della persona in "Imprese e subappaltatori" -> "Richieste di ruolo").
 const RUOLI = [
-  { value: "committente", label: "Committente" },
   { value: "cse_csp", label: "CSE / CSP" },
   { value: "rspp", label: "RSPP" },
   { value: "capocantiere", label: "Capocantiere" },
@@ -15,6 +17,14 @@ const RUOLI = [
   { value: "lavoratore", label: "Lavoratore" },
   { value: "asl_ispettorato", label: "ASL / Ispettorato" },
 ];
+
+// Solo per MOSTRARE correttamente l'etichetta di una persona che ha già
+// (da prima, o perché sei admin) il ruolo Committente/Impresa edile.
+const ETICHETTE_TUTTI_I_RUOLI: Record<string, string> = {
+  committente: "Committente",
+  impresa_edile: "Impresa edile",
+  ...Object.fromEntries(RUOLI.map((r) => [r.value, r.label])),
+};
 
 type Membro = {
   id: string;
@@ -165,6 +175,10 @@ export default function CantiereDettaglioPage() {
 
   function iniziaModifica(m: Membro) {
     setModificaId(m.id);
+    // Se questa persona ha già (da prima) il ruolo Committente/Impresa edile,
+    // non è tra le opzioni modificabili: lasciamo il valore così com'è nel
+    // menu a tendina non lo troverà e mostrerà semplicemente la prima opzione,
+    // ma senza permettere di riassegnarlo per errore ad un'altra persona.
     setRuoloModifica(m.ruolo);
     setNomeImpresaModifica(m.nome_impresa ?? "");
     setAttivitaModifica(m.attivita ?? "");
@@ -182,7 +196,11 @@ export default function CantiereDettaglioPage() {
       .select("id");
 
     if (error) {
-      alert("Errore nel salvare: " + error.message);
+      if (error.message?.includes("richiesta e approvazione")) {
+        alert("Committente e Impresa edile non si possono più assegnare da qui: la persona deve farne richiesta dalla propria pagina, e tu la approvi da \"Richieste di ruolo\".");
+      } else {
+        alert("Errore nel salvare: " + error.message);
+      }
       return;
     }
     if (!data || data.length === 0) {
@@ -218,7 +236,7 @@ export default function CantiereDettaglioPage() {
           {membriInAttesa.map((m: any) => (
             <div key={m.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
               <span>
-                {m.profili?.email} — {RUOLI.find((r) => r.value === m.ruolo)?.label} — {m.nome_impresa} ({m.attivita})
+                {m.profili?.email} — {ETICHETTE_TUTTI_I_RUOLI[m.ruolo] ?? m.ruolo} — {m.nome_impresa} ({m.attivita})
               </span>
               <button onClick={() => approva(m.id)} style={{ padding: "4px 12px" }}>
                 Approva
@@ -282,9 +300,7 @@ export default function CantiereDettaglioPage() {
             ) : (
               <tr key={m.id} style={{ borderBottom: "1px solid #eee" }}>
                 <td style={{ padding: 8 }}>{m.profili?.email}</td>
-                <td style={{ padding: 8 }}>
-                  {RUOLI.find((r) => r.value === m.ruolo)?.label ?? m.ruolo}
-                </td>
+                <td style={{ padding: 8 }}>{ETICHETTE_TUTTI_I_RUOLI[m.ruolo] ?? m.ruolo}</td>
                 <td style={{ padding: 8 }}>{impresaVisualizzata(m)}</td>
                 <td style={{ padding: 8 }}>{m.attivita ?? "—"}</td>
                 <td style={{ padding: 8, whiteSpace: "nowrap" }}>
@@ -354,6 +370,9 @@ export default function CantiereDettaglioPage() {
               </option>
             ))}
           </select>
+          <p style={{ fontSize: 12, color: "#888", margin: "4px 0 0" }}>
+            Committente e Impresa edile non sono qui: la persona li richiede dalla propria pagina, poi tu li approvi.
+          </p>
         </div>
         <div style={{ marginBottom: 8 }}>
           <input
