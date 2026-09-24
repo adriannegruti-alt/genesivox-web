@@ -24,8 +24,11 @@ const DOCUMENTO_RICHIESTO_PER_RUOLO: Record<string, string> = {
   rspp: "Nomina RSPP",
 };
 
+// "Comitente" e "Impresa edile" non sono più qui: sono ruoli veri con autorizzazioni
+// (vedi la sezione "Richiedi ruolo" nella pagina della persona in Imprese e subappaltatori),
+// non semplici etichette di attività commerciale.
 const ATTIVITA = [
-  "Comitente", "Servizi per la sicurezza", "Noleggio attrezzature edili", "Impresa edile",
+  "Servizi per la sicurezza", "Noleggio attrezzature edili",
   "Impresa segnaletica stradale", "Agenzia comunicazione visiva", "Sistemi di sicurezza e vigilanza",
   "Palificazioni e consolidamento terreni", "Elettrico", "Idro-termosanitario",
   "Movimento terra e scavi", "Trasporto conto terzi edili e gestione rifiuti speciali",
