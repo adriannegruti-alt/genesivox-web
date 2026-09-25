@@ -4,14 +4,11 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 const RUOLI = [
-  "admin",
-  "committente",
-  "cse_csp",
-  "rspp",
-  "capocantiere",
-  "impresa",
-  "lavoratore",
-  "asl_ispettorato",
+  { value: "admin", label: "Admin" },
+  { value: "rspp", label: "RSPP" },
+  { value: "coordinatore", label: "CSE / CSP" },
+  { value: "impresa", label: "Impresa" },
+  { value: "lavoratore", label: "Lavoratore" },
 ];
 
 const SIGLE_SOCIETARIE = [
@@ -367,8 +364,8 @@ export default function AdminPage() {
                     style={{ padding: 6, borderRadius: 6, border: "1px solid #d0d5dd" }}
                   >
                     {RUOLI.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
+                      <option key={r.value} value={r.value}>
+                        {r.label}
                       </option>
                     ))}
                   </select>
