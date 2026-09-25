@@ -61,6 +61,7 @@ type Richiesta = {
   stato: string;
   creato_il: string;
   tipo_account: string | null;
+  ruolo_richiesto: string | null;
 };
 
 type Profilo = {
@@ -82,6 +83,11 @@ const TIPI_ACCOUNT = [
   { value: "impresa_edile", label: "Impresa edile" },
   { value: "entrambi", label: "Entrambi" },
 ];
+
+const ETICHETTE_RUOLO_RICHIESTO: Record<string, string> = {
+  coordinatore: "CSE / CSP",
+  rspp: "RSPP",
+};
 
 export default function AdminPage() {
   const [caricamento, setCaricamento] = useState(true);
@@ -128,7 +134,7 @@ export default function AdminPage() {
     const { data: elencoRichieste } = await supabase
       .from("richieste_account")
       .select(
-        "id, nome, cognome, impresa, attivita, piva, codice_fiscale, indirizzo, email, cellulare, nome_utente, parola, stato, creato_il, tipo_account"
+        "id, nome, cognome, impresa, attivita, piva, codice_fiscale, indirizzo, email, cellulare, nome_utente, parola, stato, creato_il, tipo_account, ruolo_richiesto"
       )
       .eq("stato", "in_attesa")
       .order("creato_il", { ascending: true });
@@ -154,14 +160,20 @@ export default function AdminPage() {
         return;
       }
 
+      const aggiornamentoProfilo: Record<string, any> = {
+        impresa: richiesta.impresa,
+        nome_utente: richiesta.nome_utente,
+        attivita_base: richiesta.attivita,
+        tipo_account: richiesta.tipo_account,
+      };
+      if (richiesta.ruolo_richiesto) {
+        // Richiesta come professionista tecnico (RSPP o CSE/CSP): imposta anche il Ruolo dell'account.
+        aggiornamentoProfilo.ruolo = richiesta.ruolo_richiesto;
+      }
+
       const { error: erroreAggiornamento } = await supabase
         .from("profili")
-        .update({
-          impresa: richiesta.impresa,
-          nome_utente: richiesta.nome_utente,
-          attivita_base: richiesta.attivita,
-          tipo_account: richiesta.tipo_account,
-        })
+        .update(aggiornamentoProfilo)
         .eq("id", profiloEsistente.id);
 
       if (erroreAggiornamento) {
@@ -277,6 +289,7 @@ export default function AdminPage() {
               <span><strong>Indirizzo:</strong> {r.indirizzo || "—"}</span>
               <span><strong>Cellulare:</strong> {r.cellulare || "—"}</span>
               <span><strong>Tipo account:</strong> {r.tipo_account || "—"}</span>
+              <span><strong>Ruolo richiesto:</strong> {r.ruolo_richiesto ? (ETICHETTE_RUOLO_RICHIESTO[r.ruolo_richiesto] || r.ruolo_richiesto) : "—"}</span>
             </div>
             <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
               <button
