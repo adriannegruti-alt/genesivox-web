@@ -63,6 +63,7 @@ type Richiesta = {
   parola: string | null;
   stato: string;
   creato_il: string;
+  tipo_account: string | null;
 };
 
 type Profilo = {
@@ -75,7 +76,15 @@ type Profilo = {
   data_abbonamento: string | null;
   piano_id: string | null;
   autorita_controllo: boolean | null;
+  tipo_account: string | null;
 };
+
+const TIPI_ACCOUNT = [
+  { value: "", label: "— (nessuno, es. lavoratore)" },
+  { value: "committente", label: "Committente" },
+  { value: "impresa_edile", label: "Impresa edile" },
+  { value: "entrambi", label: "Entrambi" },
+];
 
 export default function AdminPage() {
   const [caricamento, setCaricamento] = useState(true);
@@ -114,7 +123,7 @@ export default function AdminPage() {
     const { data: elencoProfili } = await supabase
       .from("profili")
       .select(
-        "id, email, ruolo, impresa, nome_utente, codice_azienda, data_abbonamento, piano_id, autorita_controllo"
+        "id, email, ruolo, impresa, nome_utente, codice_azienda, data_abbonamento, piano_id, autorita_controllo, tipo_account"
       )
       .order("email");
     setProfili(elencoProfili || []);
@@ -122,7 +131,7 @@ export default function AdminPage() {
     const { data: elencoRichieste } = await supabase
       .from("richieste_account")
       .select(
-        "id, nome, cognome, impresa, attivita, piva, codice_fiscale, indirizzo, email, cellulare, nome_utente, parola, stato, creato_il"
+        "id, nome, cognome, impresa, attivita, piva, codice_fiscale, indirizzo, email, cellulare, nome_utente, parola, stato, creato_il, tipo_account"
       )
       .eq("stato", "in_attesa")
       .order("creato_il", { ascending: true });
@@ -154,6 +163,7 @@ export default function AdminPage() {
           impresa: richiesta.impresa,
           nome_utente: richiesta.nome_utente,
           attivita_base: richiesta.attivita,
+          tipo_account: richiesta.tipo_account,
         })
         .eq("id", profiloEsistente.id);
 
@@ -194,6 +204,7 @@ export default function AdminPage() {
         data_abbonamento: profilo.data_abbonamento,
         autorita_controllo: profilo.autorita_controllo,
         codice_azienda: codiceAzienda,
+        tipo_account: profilo.tipo_account || null,
       })
       .eq("id", profilo.id);
 
@@ -268,6 +279,7 @@ export default function AdminPage() {
               <span><strong>Cod. fiscale:</strong> {r.codice_fiscale || "—"}</span>
               <span><strong>Indirizzo:</strong> {r.indirizzo || "—"}</span>
               <span><strong>Cellulare:</strong> {r.cellulare || "—"}</span>
+              <span><strong>Tipo account:</strong> {r.tipo_account || "—"}</span>
             </div>
             <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
               <button
@@ -322,6 +334,7 @@ export default function AdminPage() {
               <th style={{ padding: 8 }}>Nome azienda</th>
               <th style={{ padding: 8 }}>Nome utente</th>
               <th style={{ padding: 8 }}>Ruolo</th>
+              <th style={{ padding: 8 }}>Tipo account</th>
               <th style={{ padding: 8 }}>Piano</th>
               <th style={{ padding: 8 }}>Data abbonamento</th>
               <th style={{ padding: 8 }}>Codice azienda</th>
@@ -356,6 +369,19 @@ export default function AdminPage() {
                     {RUOLI.map((r) => (
                       <option key={r} value={r}>
                         {r}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td style={{ padding: 8 }}>
+                  <select
+                    value={p.tipo_account ?? ""}
+                    onChange={(e) => aggiornaCampo(p.id, "tipo_account", e.target.value || null)}
+                    style={{ padding: 6, borderRadius: 6, border: "1px solid #d0d5dd" }}
+                  >
+                    {TIPI_ACCOUNT.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
                       </option>
                     ))}
                   </select>
