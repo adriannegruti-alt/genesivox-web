@@ -3,8 +3,15 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
+const TIPI_ACCOUNT = [
+  { value: "committente", label: "Committente", descrizione: "Chi commissiona i lavori e investe nel progetto." },
+  { value: "impresa_edile", label: "Impresa edile", descrizione: "Chi gestisce l'esecuzione del cantiere." },
+  { value: "entrambi", label: "Entrambi", descrizione: "Sei sia Committente che Impresa edile." },
+];
+
 export default function CreaAccountPage() {
   const [isLavoratore, setIsLavoratore] = useState(false);
+  const [tipoAccount, setTipoAccount] = useState("committente");
 
   const [form, setForm] = useState({
     nome: "",
@@ -107,6 +114,7 @@ export default function CreaAccountPage() {
       parola: form.parola,
       consenso_privacy: consensoPrivacy,
       consenso_altro: consensoAltro,
+      tipo_account: tipoAccount,
     });
 
     setInvioInCorso(false);
@@ -202,6 +210,43 @@ export default function CreaAccountPage() {
       </div>
 
       <form onSubmit={invia}>
+        {!isLavoratore && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: 13, marginBottom: 6, fontWeight: 600 }}>
+              Che tipo di account sei?
+            </label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {TIPI_ACCOUNT.map((t) => (
+                <label
+                  key={t.value}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    padding: 10,
+                    border: tipoAccount === t.value ? "2px solid #1a73e8" : "1px solid #ddd",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    fontSize: 13,
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="tipoAccount"
+                    checked={tipoAccount === t.value}
+                    onChange={() => setTipoAccount(t.value)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>
+                    <strong>{t.label}</strong>
+                    <br />
+                    <span style={{ color: "#666" }}>{t.descrizione}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
         {campiDaMostrare.map((f) => (
           <div key={f.campo} style={{ marginBottom: 10 }}>
             <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>{f.label}</label>
