@@ -39,6 +39,7 @@ export default function VerbaliCsePage() {
   const [puoCompilare, setPuoCompilare] = useState(false);
   const [mioId, setMioId] = useState<string | null>(null);
   const [verbali, setVerbali] = useState<any[]>([]);
+  const [membriCantiere, setMembriCantiere] = useState<{ id: string; email: string }[]>([]);
   const [errore, setErrore] = useState<string | null>(null);
 
   const [tipoNuovo, setTipoNuovo] = useState<TipoVerbale | null>(null);
@@ -60,7 +61,7 @@ export default function VerbaliCsePage() {
   const [decisioni, setDecisioni] = useState("");
 
   // Campi non conformità
-  const [impresaDestinataria, setImpresaDestinataria] = useState("");
+  const [destinatarioMembroId, setDestinatarioMembroId] = useState("");
   const [descrizioneViolazione, setDescrizioneViolazione] = useState("");
   const [notificatoImpresa, setNotificatoImpresa] = useState(true);
   const [notificatoCommittente, setNotificatoCommittente] = useState(true);
@@ -98,6 +99,14 @@ export default function VerbaliCsePage() {
       setPuoCompilare(cse);
     }
 
+    const { data: membri } = await supabase
+      .from("cantiere_membri")
+      .select("id, profili!cantiere_membri_profilo_id_fkey(email)")
+      .eq("cantiere_id", cantiereId);
+    setMembriCantiere(
+      (membri || []).map((m: any) => ({ id: m.id, email: m.profili?.email ?? "(email sconosciuta)" }))
+    );
+
     const { data: elenco, error } = await supabase
       .from("verbali_cse")
       .select("*")
@@ -128,7 +137,7 @@ export default function VerbaliCsePage() {
     setPartecipanti("");
     setArgomenti("");
     setDecisioni("");
-    setImpresaDestinataria("");
+    setDestinatarioMembroId("");
     setDescrizioneViolazione("");
     setNotificatoImpresa(true);
     setNotificatoCommittente(true);
@@ -152,6 +161,7 @@ export default function VerbaliCsePage() {
     setErrore(null);
 
     let contenuto: Record<string, any> = {};
+    let destinatario: string | null = null;
 
     if (tipoNuovo === "sopralluogo") {
       contenuto = {
@@ -163,8 +173,14 @@ export default function VerbaliCsePage() {
     } else if (tipoNuovo === "coordinamento_periodico") {
       contenuto = { partecipanti, argomenti, decisioni };
     } else if (tipoNuovo === "non_conformita") {
+      if (!destinatarioMembroId) {
+        setErrore("Seleziona l'impresa destinataria della contestazione.");
+        setSalvataggio(false);
+        return;
+      }
+      destinatario = destinatarioMembroId;
       contenuto = {
-        impresa_destinataria: impresaDestinataria,
+        impresa_destinataria: membriCantiere.find((m) => m.id === destinatarioMembroId)?.email ?? "",
         descrizione_violazione: descrizioneViolazione,
         notificato_impresa: notificatoImpresa,
         notificato_committente: notificatoCommittente,
@@ -188,6 +204,7 @@ export default function VerbaliCsePage() {
         ora: ora || null,
         contenuto,
         creato_da: mioId,
+        destinatario_membro_id: destinatario,
       })
       .select("id");
 
@@ -337,7 +354,22 @@ export default function VerbaliCsePage() {
           {tipoNuovo === "non_conformita" && (
             <>
               <Campo label="Impresa destinataria della contestazione">
-                <input value={impresaDestinataria} onChange={(e) => setImpresaDestinataria(e.target.value)} style={{ width: "100%", padding: 8 }} />
+                <select
+                  value={destinatarioMembroId}
+                  onChange={(e) => setDestinatarioMembroId(e.target.value)}
+                  required
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="">— Seleziona —</option>
+                  {membriCantiere.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.email}
+                    </option>
+                  ))}
+                </select>
+                <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+                  Solo l'impresa selezionata potrà vedere questo verbale, oltre a Committente/Impresa edile/admin/ASL.
+                </p>
               </Campo>
               <Campo label="Descrizione della violazione (misure del PSC non rispettate)">
                 <textarea value={descrizioneViolazione} onChange={(e) => setDescrizioneViolazione(e.target.value)} rows={3} style={stileTextarea} />
