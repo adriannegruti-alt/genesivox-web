@@ -9,9 +9,16 @@ const TIPI_ACCOUNT = [
   { value: "entrambi", label: "Entrambi", descrizione: "Sei sia Committente che Impresa edile." },
 ];
 
+const RUOLI_PROFESSIONISTA = [
+  { value: "coordinatore", label: "CSE / CSP", descrizione: "Coordinatore per la sicurezza in fase di progettazione/esecuzione." },
+  { value: "rspp", label: "RSPP", descrizione: "Responsabile del Servizio di Prevenzione e Protezione." },
+];
+
 export default function CreaAccountPage() {
   const [isLavoratore, setIsLavoratore] = useState(false);
+  const [isProfessionista, setIsProfessionista] = useState(false);
   const [tipoAccount, setTipoAccount] = useState("committente");
+  const [ruoloProfessionista, setRuoloProfessionista] = useState("coordinatore");
 
   const [form, setForm] = useState({
     nome: "",
@@ -99,7 +106,7 @@ export default function CreaAccountPage() {
       return;
     }
 
-    // Impresa / altri ruoli: resta una richiesta soggetta ad approvazione dell'amministratore.
+    // Impresa/Committente o Professionista tecnico: resta una richiesta soggetta ad approvazione.
     const { error } = await supabase.from("richieste_account").insert({
       nome: form.nome,
       cognome: form.cognome,
@@ -114,7 +121,8 @@ export default function CreaAccountPage() {
       parola: form.parola,
       consenso_privacy: consensoPrivacy,
       consenso_altro: consensoAltro,
-      tipo_account: tipoAccount,
+      tipo_account: isProfessionista ? null : tipoAccount,
+      ruolo_richiesto: isProfessionista ? ruoloProfessionista : null,
     });
 
     setInvioInCorso(false);
@@ -199,7 +207,10 @@ export default function CreaAccountPage() {
           <input
             type="checkbox"
             checked={isLavoratore}
-            onChange={(e) => setIsLavoratore(e.target.checked)}
+            onChange={(e) => {
+              setIsLavoratore(e.target.checked);
+              if (e.target.checked) setIsProfessionista(false);
+            }}
             style={{ marginTop: 2 }}
           />
           <span>
@@ -209,8 +220,67 @@ export default function CreaAccountPage() {
         </label>
       </div>
 
+      {!isLavoratore && (
+        <div
+          style={{
+            margin: "16px 0",
+            padding: 12,
+            border: "1px solid #f6d9a0",
+            backgroundColor: "#fff8ec",
+            borderRadius: 8,
+          }}
+        >
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 14 }}>
+            <input
+              type="checkbox"
+              checked={isProfessionista}
+              onChange={(e) => setIsProfessionista(e.target.checked)}
+              style={{ marginTop: 2 }}
+            />
+            <span>
+              <strong>Sono un professionista tecnico</strong> — RSPP o CSE/CSP, nominato da un
+              Committente/Impresa edile su un cantiere. Richiesta soggetta ad approvazione.
+            </span>
+          </label>
+
+          {isProfessionista && (
+            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+              {RUOLI_PROFESSIONISTA.map((r) => (
+                <label
+                  key={r.value}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    padding: 10,
+                    border: ruoloProfessionista === r.value ? "2px solid #1a73e8" : "1px solid #ddd",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    fontSize: 13,
+                    backgroundColor: "#fff",
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="ruoloProfessionista"
+                    checked={ruoloProfessionista === r.value}
+                    onChange={() => setRuoloProfessionista(r.value)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>
+                    <strong>{r.label}</strong>
+                    <br />
+                    <span style={{ color: "#666" }}>{r.descrizione}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <form onSubmit={invia}>
-        {!isLavoratore && (
+        {!isLavoratore && !isProfessionista && (
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: "block", fontSize: 13, marginBottom: 6, fontWeight: 600 }}>
               Che tipo di account sei?
