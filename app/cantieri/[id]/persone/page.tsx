@@ -5,9 +5,6 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
-// Ruoli selezionabili qui: Committente e Impresa edile NON ci sono più,
-// perché ora si ottengono solo tramite richiesta + approvazione
-// (pagina della persona in "Imprese e subappaltatori" -> "Richieste di ruolo").
 const RUOLI = [
   { value: "cse_csp", label: "CSE / CSP" },
   { value: "rspp", label: "RSPP" },
@@ -18,8 +15,6 @@ const RUOLI = [
   { value: "asl_ispettorato", label: "ASL / Ispettorato" },
 ];
 
-// Solo per MOSTRARE correttamente l'etichetta di una persona che ha già
-// (da prima, o perché sei admin) il ruolo Committente/Impresa edile.
 const ETICHETTE_TUTTI_I_RUOLI: Record<string, string> = {
   committente: "Committente",
   impresa_edile: "Impresa edile",
@@ -60,10 +55,42 @@ export default function CantiereDettaglioPage() {
   const [attivitaModifica, setAttivitaModifica] = useState("");
 
   const [erroreCaricamento, setErroreCaricamento] = useState<string | null>(null);
+  const [puoGestirePersone, setPuoGestirePersone] = useState(false);
 
-  // Quando si scrive l'email e si esce dal campo, recupera impresa e attività
-  // con cui quella persona si era già registrata (dal suo account o da un
-  // altro cantiere), per non doverle reinserire a mano se non serve.
+  async function calcolaPermessi() {
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData?.user?.id;
+    if (!uid) return;
+
+    const { data: profiloMio } = await supabase.from("profili").select("ruolo").eq("id", uid).maybeSingle();
+    if (profiloMio?.ruolo === "admin") {
+      setPuoGestirePersone(true);
+      return;
+    }
+
+    const { data: cantiereRiga } = await supabase.from("cantieri").select("creato_da").eq("id", cantiereId).maybeSingle();
+    if (cantiereRiga?.creato_da === uid) {
+      setPuoGestirePersone(true);
+      return;
+    }
+
+    const { data: membro } = await supabase
+      .from("cantiere_membri")
+      .select("id, ruolo")
+      .eq("cantiere_id", cantiereId)
+      .eq("profilo_id", uid)
+      .maybeSingle();
+
+    let ruoliMiei: string[] = membro?.ruolo ? [membro.ruolo] : [];
+    if (membro) {
+      const { data: ruoliExtra } = await supabase.from("membro_ruoli").select("ruolo").eq("membro_id", membro.id);
+      ruoliMiei = ruoliMiei.concat((ruoliExtra || []).map((r) => r.ruolo));
+    }
+
+    const autorizzato = ruoliMiei.some((r) => ["committente", "impresa_edile", "rspp"].includes(r));
+    setPuoGestirePersone(autorizzato);
+  }
+
   async function autocompletaDaEmail() {
     if (!emailNuovo) return;
 
@@ -81,8 +108,6 @@ export default function CantiereDettaglioPage() {
     }
 
     if (!attivitaModificataAMano) {
-      // Priorità 1: attività di base impostata dall'utente in Impostazioni account.
-      // Priorità 2 (solo se non l'ha impostata): l'ultima attività usata in un altro cantiere.
       if (profilo.attivita_base) {
         setAttivitaNuovo(profilo.attivita_base);
       } else {
@@ -136,7 +161,10 @@ export default function CantiereDettaglioPage() {
   }
 
   useEffect(() => {
-    if (cantiereId) carica();
+    if (cantiereId) {
+      carica();
+      calcolaPermessi();
+    }
   }, [cantiereId]);
 
   async function aggiungiPersona(e: React.FormEvent) {
@@ -144,7 +172,6 @@ export default function CantiereDettaglioPage() {
     setErrore(null);
     setMessaggio(null);
 
-    // Cerca se esiste già un profilo con questa email (ignora maiuscole/minuscole e spazi)
     const { data: risultatiRicerca } = await supabase.rpc("cerca_profilo_per_email", {
       email_ricerca: emailNuovo.trim(),
     });
@@ -192,10 +219,6 @@ export default function CantiereDettaglioPage() {
 
   function iniziaModifica(m: Membro) {
     setModificaId(m.id);
-    // Se questa persona ha già (da prima) il ruolo Committente/Impresa edile,
-    // non è tra le opzioni modificabili: lasciamo il valore così com'è nel
-    // menu a tendina non lo troverà e mostrerà semplicemente la prima opzione,
-    // ma senza permettere di riassegnarlo per errore ad un'altra persona.
     setRuoloModifica(m.ruolo);
     setNomeImpresaModifica(m.nome_impresa ?? "");
     setAttivitaModifica(m.attivita ?? "");
@@ -213,11 +236,7 @@ export default function CantiereDettaglioPage() {
       .select("id");
 
     if (error) {
-      if (error.message?.includes("richiesta e approvazione")) {
-        alert("Committente e Impresa edile non si possono più assegnare da qui: la persona deve farne richiesta dalla propria pagina, e tu la approvi da \"Richieste di ruolo\".");
-      } else {
-        alert("Errore nel salvare: " + error.message);
-      }
+      alert("Errore nel salvare: " + error.message);
       return;
     }
     if (!data || data.length === 0) {
@@ -247,6 +266,12 @@ export default function CantiereDettaglioPage() {
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 700 }}>
       <h1>Persone assegnate</h1>
 
+      {!puoGestirePersone && (
+        <p style={{ color: "#666", fontSize: 13, backgroundColor: "#f5f5f5", padding: 10, borderRadius: 6 }}>
+          Puoi consultare l'elenco delle persone, ma non puoi aggiungerne, modificarle o eliminarle.
+        </p>
+      )}
+
       {membriInAttesa.length > 0 && (
         <div style={{ margin: "16px 0", padding: 16, border: "1px solid #f0ad4e", borderRadius: 8 }}>
           <h3 style={{ marginTop: 0 }}>Richieste in attesa di approvazione</h3>
@@ -255,9 +280,11 @@ export default function CantiereDettaglioPage() {
               <span>
                 {m.profili?.email} — {ETICHETTE_TUTTI_I_RUOLI[m.ruolo] ?? m.ruolo} — {m.nome_impresa} ({m.attivita})
               </span>
-              <button onClick={() => approva(m.id)} style={{ padding: "4px 12px" }}>
-                Approva
-              </button>
+              {puoGestirePersone && (
+                <button onClick={() => approva(m.id)} style={{ padding: "4px 12px" }}>
+                  Approva
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -324,25 +351,29 @@ export default function CantiereDettaglioPage() {
                   <Link href={`/cantieri/${cantiereId}/persone/${m.id}`} style={{ fontSize: 13, marginRight: 10 }}>
                     Ruoli extra →
                   </Link>
-                  <button
-                    onClick={() => iniziaModifica(m)}
-                    style={{ padding: "4px 10px", marginRight: 6, fontSize: 13 }}
-                  >
-                    Modifica
-                  </button>
-                  <button
-                    onClick={() => eliminaMembro(m.id, impresaVisualizzata(m) !== "—" ? impresaVisualizzata(m) : m.profili?.email || "questa persona")}
-                    style={{
-                      padding: "4px 10px",
-                      fontSize: 13,
-                      color: "#c0392b",
-                      border: "1px solid #c0392b",
-                      borderRadius: 4,
-                      background: "none",
-                    }}
-                  >
-                    Elimina
-                  </button>
+                  {puoGestirePersone && (
+                    <>
+                      <button
+                        onClick={() => iniziaModifica(m)}
+                        style={{ padding: "4px 10px", marginRight: 6, fontSize: 13 }}
+                      >
+                        Modifica
+                      </button>
+                      <button
+                        onClick={() => eliminaMembro(m.id, impresaVisualizzata(m) !== "—" ? impresaVisualizzata(m) : m.profili?.email || "questa persona")}
+                        style={{
+                          padding: "4px 10px",
+                          fontSize: 13,
+                          color: "#c0392b",
+                          border: "1px solid #c0392b",
+                          borderRadius: 4,
+                          background: "none",
+                        }}
+                      >
+                        Elimina
+                      </button>
+                    </>
+                  )}
                 </td>
               </tr>
             )
@@ -350,73 +381,73 @@ export default function CantiereDettaglioPage() {
         </tbody>
       </table>
 
-      <form onSubmit={aggiungiPersona} style={{ padding: 16, border: "1px solid #ddd", borderRadius: 8 }}>
-        <h3 style={{ marginTop: 0 }}>Aggiungi persona</h3>
-        <div style={{ marginBottom: 8 }}>
-          <input
-            type="email"
-            placeholder="Email della persona (deve avere già un account)"
-            value={emailNuovo}
-            onChange={(e) => setEmailNuovo(e.target.value)}
-            onBlur={autocompletaDaEmail}
-            required
-            style={{ width: "100%", padding: 8 }}
-          />
-          {ricercaAutocompletamento && (
-            <p style={{ fontSize: 12, color: "#666", margin: "4px 0 0" }}>Recupero dati della persona...</p>
-          )}
-        </div>
-        <div style={{ marginBottom: 8 }}>
-          <select
-            value={ruoloNuovo}
-            onChange={(e) => {
-              const nuovoRuolo = e.target.value;
-              setRuoloNuovo(nuovoRuolo);
-              // Se il campo Attività è ancora vuoto e non è stato modificato a mano,
-              // lo riempie con il ruolo appena scelto (resta comunque modificabile).
-              if (!attivitaNuovo && !attivitaModificataAMano) {
-                const etichetta = RUOLI.find((r) => r.value === nuovoRuolo)?.label;
-                if (etichetta) setAttivitaNuovo(etichetta);
-              }
-            }}
-            style={{ width: "100%", padding: 8 }}
-          >
-            {RUOLI.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-          <p style={{ fontSize: 12, color: "#888", margin: "4px 0 0" }}>
-            Committente e Impresa edile non sono qui: la persona li richiede dalla propria pagina, poi tu li approvi.
-          </p>
-        </div>
-        <div style={{ marginBottom: 8 }}>
-          <input
-            placeholder="Nome impresa"
-            value={nomeImpresaNuovo}
-            onChange={(e) => {
-              setNomeImpresaNuovo(e.target.value);
-              setImpresaModificataAMano(true);
-            }}
-            style={{ width: "100%", padding: 8 }}
-          />
-        </div>
-        <div style={{ marginBottom: 8 }}>
-          <input
-            placeholder="Attività svolta (es. idraulico, elettricista, piastrellista)"
-            value={attivitaNuovo}
-            onChange={(e) => {
-              setAttivitaNuovo(e.target.value);
-              setAttivitaModificataAMano(true);
-            }}
-            style={{ width: "100%", padding: 8 }}
-          />
-        </div>
-        {errore && <p style={{ color: "red" }}>{errore}</p>}
-        {messaggio && <p style={{ color: "green" }}>{messaggio}</p>}
-        <button type="submit" style={{ padding: "8px 16px" }}>Aggiungi</button>
-      </form>
+      {puoGestirePersone && (
+        <form onSubmit={aggiungiPersona} style={{ padding: 16, border: "1px solid #ddd", borderRadius: 8 }}>
+          <h3 style={{ marginTop: 0 }}>Aggiungi persona</h3>
+          <div style={{ marginBottom: 8 }}>
+            <input
+              type="email"
+              placeholder="Email della persona (deve avere già un account)"
+              value={emailNuovo}
+              onChange={(e) => setEmailNuovo(e.target.value)}
+              onBlur={autocompletaDaEmail}
+              required
+              style={{ width: "100%", padding: 8 }}
+            />
+            {ricercaAutocompletamento && (
+              <p style={{ fontSize: 12, color: "#666", margin: "4px 0 0" }}>Recupero dati della persona...</p>
+            )}
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <select
+              value={ruoloNuovo}
+              onChange={(e) => {
+                const nuovoRuolo = e.target.value;
+                setRuoloNuovo(nuovoRuolo);
+                if (!attivitaNuovo && !attivitaModificataAMano) {
+                  const etichetta = RUOLI.find((r) => r.value === nuovoRuolo)?.label;
+                  if (etichetta) setAttivitaNuovo(etichetta);
+                }
+              }}
+              style={{ width: "100%", padding: 8 }}
+            >
+              {RUOLI.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+            <p style={{ fontSize: 12, color: "#888", margin: "4px 0 0" }}>
+              Committente e Impresa edile non sono qui: vengono assegnati automaticamente/dalla pagina delle imprese.
+            </p>
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <input
+              placeholder="Nome impresa"
+              value={nomeImpresaNuovo}
+              onChange={(e) => {
+                setNomeImpresaNuovo(e.target.value);
+                setImpresaModificataAMano(true);
+              }}
+              style={{ width: "100%", padding: 8 }}
+            />
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <input
+              placeholder="Attività svolta (es. idraulico, elettricista, piastrellista)"
+              value={attivitaNuovo}
+              onChange={(e) => {
+                setAttivitaNuovo(e.target.value);
+                setAttivitaModificataAMano(true);
+              }}
+              style={{ width: "100%", padding: 8 }}
+            />
+          </div>
+          {errore && <p style={{ color: "red" }}>{errore}</p>}
+          {messaggio && <p style={{ color: "green" }}>{messaggio}</p>}
+          <button type="submit" style={{ padding: "8px 16px" }}>Aggiungi</button>
+        </form>
+      )}
     </div>
   );
 }
