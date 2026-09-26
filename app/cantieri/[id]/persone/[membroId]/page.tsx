@@ -6,6 +6,8 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
 const RUOLI = [
+  { value: "responsabile_lavori", label: "Responsabile dei Lavori (RL)" },
+  { value: "direttore_lavori", label: "Direttore Lavori (DL)" },
   { value: "cse_csp", label: "CSE / CSP" },
   { value: "rspp", label: "RSPP" },
   { value: "capocantiere", label: "Capocantiere" },
