@@ -40,6 +40,7 @@ export default function VerbaliCsePage() {
   const [mioId, setMioId] = useState<string | null>(null);
   const [verbali, setVerbali] = useState<any[]>([]);
   const [membriCantiere, setMembriCantiere] = useState<{ id: string; email: string }[]>([]);
+  const [nomeCantiere, setNomeCantiere] = useState("");
   const [errore, setErrore] = useState<string | null>(null);
 
   const [tipoNuovo, setTipoNuovo] = useState<TipoVerbale | null>(null);
@@ -79,6 +80,9 @@ export default function VerbaliCsePage() {
     const { data: userData } = await supabase.auth.getUser();
     const uid = userData?.user?.id ?? null;
     setMioId(uid);
+
+    const { data: cantiere } = await supabase.from("cantieri").select("nome").eq("id", cantiereId).maybeSingle();
+    setNomeCantiere(cantiere?.nome ?? "");
 
     if (uid) {
       const { data: membro } = await supabase
@@ -237,6 +241,39 @@ export default function VerbaliCsePage() {
 
   function etichettaTipo(tipo: string) {
     return TIPI_VERBALE.find((t) => t.value === tipo)?.label ?? tipo;
+  }
+
+  function scaricaPdf(v: any) {
+    const finestra = window.open("", "_blank");
+    if (!finestra) {
+      alert("Il browser ha bloccato l'apertura della finestra. Consenti i popup per questo sito e riprova.");
+      return;
+    }
+    const contenutoHtml = formattaContenuto(v.tipo, v.contenuto).replace(/\n/g, "<br/>");
+    finestra.document.write(`
+      <html>
+        <head>
+          <title>${etichettaTipo(v.tipo)} - ${v.data}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 32px; color: #111; }
+            h1 { font-size: 20px; margin-bottom: 4px; }
+            .meta { color: #555; font-size: 13px; margin-bottom: 20px; }
+            .contenuto { font-size: 14px; line-height: 1.6; border-top: 1px solid #ccc; padding-top: 16px; }
+          </style>
+        </head>
+        <body>
+          <h1>${etichettaTipo(v.tipo)}</h1>
+          <div class="meta">
+            Cantiere: ${nomeCantiere || "—"}<br/>
+            Data: ${v.data}${v.ora ? ` — ore ${v.ora}` : ""}
+          </div>
+          <div class="contenuto">${contenutoHtml}</div>
+        </body>
+      </html>
+    `);
+    finestra.document.close();
+    finestra.focus();
+    setTimeout(() => finestra.print(), 300);
   }
 
   if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
@@ -424,11 +461,27 @@ export default function VerbaliCsePage() {
       {verbali.length === 0 && <p style={{ color: "#666" }}>Nessun verbale registrato per ora.</p>}
       {verbali.map((v) => (
         <div key={v.id} style={{ border: "1px solid #eee", borderRadius: 8, padding: 12, marginBottom: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <strong>{etichettaTipo(v.tipo)}</strong>
-            <span style={{ color: "#666", fontSize: 13 }}>
-              {v.data} {v.ora ? `— ${v.ora}` : ""}
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ color: "#666", fontSize: 13 }}>
+                {v.data} {v.ora ? `— ${v.ora}` : ""}
+              </span>
+              <button
+                onClick={() => scaricaPdf(v)}
+                style={{
+                  padding: "4px 10px",
+                  fontSize: 12,
+                  borderRadius: 6,
+                  border: "1px solid #d6e6fb",
+                  backgroundColor: "#eef4fd",
+                  color: "#1a73e8",
+                  cursor: "pointer",
+                }}
+              >
+                📄 Scarica PDF
+              </button>
+            </div>
           </div>
           <pre
             style={{
