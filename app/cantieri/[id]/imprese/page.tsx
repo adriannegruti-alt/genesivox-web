@@ -67,10 +67,45 @@ export default function ImpresePage() {
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
   const [messaggio, setMessaggio] = useState<string | null>(null);
+  const [puoAggiungere, setPuoAggiungere] = useState(false);
 
   const [mostraForm, setMostraForm] = useState(false);
   const [emailNuovo, setEmailNuovo] = useState("");
   const [nomeImpresaNuovo, setNomeImpresaNuovo] = useState("");
+
+  async function calcolaPermessi() {
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData?.user?.id;
+    if (!uid) return;
+
+    const { data: profiloMio } = await supabase.from("profili").select("ruolo").eq("id", uid).maybeSingle();
+    if (profiloMio?.ruolo === "admin") {
+      setPuoAggiungere(true);
+      return;
+    }
+
+    const { data: cantiere } = await supabase.from("cantieri").select("creato_da").eq("id", cantiereId).maybeSingle();
+    if (cantiere?.creato_da === uid) {
+      setPuoAggiungere(true);
+      return;
+    }
+
+    const { data: membroMio } = await supabase
+      .from("cantiere_membri")
+      .select("id, ruolo")
+      .eq("cantiere_id", cantiereId)
+      .eq("profilo_id", uid)
+      .maybeSingle();
+
+    let ruoliMiei: string[] = membroMio?.ruolo ? [membroMio.ruolo] : [];
+    if (membroMio) {
+      const { data: ruoliExtraPropri } = await supabase.from("membro_ruoli").select("ruolo").eq("membro_id", membroMio.id);
+      ruoliMiei = ruoliMiei.concat((ruoliExtraPropri || []).map((r) => r.ruolo));
+    }
+
+    const autorizzato = ruoliMiei.some((r) => ["committente", "impresa_edile", "rspp"].includes(r));
+    setPuoAggiungere(autorizzato);
+  }
 
   async function carica() {
     const { data: m, error } = await supabase
@@ -88,9 +123,6 @@ export default function ImpresePage() {
     const membriCaricati = (m as unknown as Membro[]) || [];
     setMembri(membriCaricati);
 
-    // Carica attività extra e ruoli extra di tutti i membri, in due query uniche
-    // (invece che una per persona), cosi' la lista si compila da sola con tutto
-    // quello che e' stato assegnato dalla pagina "Ruoli extra".
     const idMembri = membriCaricati.map((x) => x.id);
     if (idMembri.length > 0) {
       const { data: extraAttivita } = await supabase
@@ -120,7 +152,10 @@ export default function ImpresePage() {
   }
 
   useEffect(() => {
-    if (cantiereId) carica();
+    if (cantiereId) {
+      carica();
+      calcolaPermessi();
+    }
   }, [cantiereId]);
 
   async function aggiungiImpresa(e: React.FormEvent) {
@@ -216,12 +251,14 @@ export default function ImpresePage() {
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <h2>{attivitaSelezionata}</h2>
-                <button onClick={() => setMostraForm(!mostraForm)} style={{ padding: "6px 14px" }}>
-                  {mostraForm ? "Annulla" : "+ Aggiungi impresa"}
-                </button>
+                {puoAggiungere && (
+                  <button onClick={() => setMostraForm(!mostraForm)} style={{ padding: "6px 14px" }}>
+                    {mostraForm ? "Annulla" : "+ Aggiungi impresa"}
+                  </button>
+                )}
               </div>
 
-              {mostraForm && (
+              {mostraForm && puoAggiungere && (
                 <form
                   onSubmit={aggiungiImpresa}
                   style={{ padding: 16, border: "1px solid #ddd", borderRadius: 8, marginBottom: 16 }}
