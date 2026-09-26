@@ -44,6 +44,7 @@ export default function VerbaliCsePage() {
   const [errore, setErrore] = useState<string | null>(null);
 
   const [tipoNuovo, setTipoNuovo] = useState<TipoVerbale | null>(null);
+  const [modificaId, setModificaId] = useState<string | null>(null);
   const [salvataggio, setSalvataggio] = useState(false);
 
   // Campi comuni
@@ -154,8 +155,65 @@ export default function VerbaliCsePage() {
 
   function apriNuovo(tipo: TipoVerbale) {
     resetCampi();
+    setModificaId(null);
     setTipoNuovo(tipo);
     setErrore(null);
+  }
+
+  function annullaForm() {
+    setTipoNuovo(null);
+    setModificaId(null);
+    setErrore(null);
+  }
+
+  function iniziaModifica(v: any) {
+    resetCampi();
+    setData(v.data);
+    setOra(v.ora || "");
+
+    const c = v.contenuto || {};
+    if (v.tipo === "sopralluogo") {
+      setImpresePresenti(c.imprese_presenti || "");
+      setLavorazioniInCorso(c.lavorazioni_in_corso || "");
+      setConformitaRiscontrate(c.conformita_riscontrate || "");
+      setPrescrizioni(c.prescrizioni && c.prescrizioni.length > 0 ? c.prescrizioni : [{ descrizione: "", scadenza: "" }]);
+    } else if (v.tipo === "coordinamento_periodico") {
+      setPartecipanti(c.partecipanti || "");
+      setArgomenti(c.argomenti || "");
+      setDecisioni(c.decisioni || "");
+    } else if (v.tipo === "non_conformita") {
+      setDestinatarioMembroId(v.destinatario_membro_id || "");
+      setDescrizioneViolazione(c.descrizione_violazione || "");
+      setNotificatoImpresa(!!c.notificato_impresa);
+      setNotificatoCommittente(!!c.notificato_committente);
+    } else if (v.tipo === "sospensione_lavori") {
+      setLavorazioniSospese(c.lavorazioni_sospese || "");
+      setMotivoPericolo(c.motivo_pericolo || "");
+      setInformatoCommittente(!!c.informato_committente);
+      setInformatoAsl(!!c.informato_asl);
+      setNoteSospensione(c.note || "");
+    }
+
+    setModificaId(v.id);
+    setTipoNuovo(v.tipo);
+    setErrore(null);
+  }
+
+  async function eliminaVerbale(id: string) {
+    if (!confirm("Eliminare questo verbale? L'operazione non è reversibile.")) return;
+    setErrore(null);
+
+    const { data: cancellato, error } = await supabase.from("verbali_cse").delete().eq("id", id).select("id");
+
+    if (error) {
+      setErrore(error.message);
+      return;
+    }
+    if (!cancellato || cancellato.length === 0) {
+      setErrore("Non hai i permessi per eliminare questo verbale (puoi eliminare solo quelli creati da te).");
+      return;
+    }
+    carica();
   }
 
   async function salvaVerbale(e: React.FormEvent) {
@@ -199,31 +257,56 @@ export default function VerbaliCsePage() {
       };
     }
 
-    const { data: inserito, error } = await supabase
-      .from("verbali_cse")
-      .insert({
-        cantiere_id: cantiereId,
-        tipo: tipoNuovo,
-        data,
-        ora: ora || null,
-        contenuto,
-        creato_da: mioId,
-        destinatario_membro_id: destinatario,
-      })
-      .select("id");
+    if (modificaId) {
+      const { data: aggiornato, error } = await supabase
+        .from("verbali_cse")
+        .update({
+          data,
+          ora: ora || null,
+          contenuto,
+          destinatario_membro_id: destinatario,
+        })
+        .eq("id", modificaId)
+        .select("id");
 
-    setSalvataggio(false);
+      setSalvataggio(false);
 
-    if (error) {
-      setErrore(error.message);
-      return;
-    }
-    if (!inserito || inserito.length === 0) {
-      setErrore("Non hai i permessi per creare un verbale in questo cantiere (solo il CSE/CSP assegnato può farlo).");
-      return;
+      if (error) {
+        setErrore(error.message);
+        return;
+      }
+      if (!aggiornato || aggiornato.length === 0) {
+        setErrore("Non hai i permessi per modificare questo verbale (puoi modificare solo quelli creati da te).");
+        return;
+      }
+    } else {
+      const { data: inserito, error } = await supabase
+        .from("verbali_cse")
+        .insert({
+          cantiere_id: cantiereId,
+          tipo: tipoNuovo,
+          data,
+          ora: ora || null,
+          contenuto,
+          creato_da: mioId,
+          destinatario_membro_id: destinatario,
+        })
+        .select("id");
+
+      setSalvataggio(false);
+
+      if (error) {
+        setErrore(error.message);
+        return;
+      }
+      if (!inserito || inserito.length === 0) {
+        setErrore("Non hai i permessi per creare un verbale in questo cantiere (solo il CSE/CSP assegnato può farlo).");
+        return;
+      }
     }
 
     setTipoNuovo(null);
+    setModificaId(null);
     carica();
   }
 
@@ -322,7 +405,10 @@ export default function VerbaliCsePage() {
           onSubmit={salvaVerbale}
           style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16, marginBottom: 24 }}
         >
-          <h3 style={{ marginTop: 0 }}>{etichettaTipo(tipoNuovo)}</h3>
+          <h3 style={{ marginTop: 0 }}>
+            {modificaId ? "Modifica: " : ""}
+            {etichettaTipo(tipoNuovo)}
+          </h3>
 
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             <div style={{ flex: 1 }}>
@@ -448,9 +534,9 @@ export default function VerbaliCsePage() {
 
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <button type="submit" disabled={salvataggio} style={{ padding: "8px 16px" }}>
-              {salvataggio ? "Salvataggio..." : "Salva verbale"}
+              {salvataggio ? "Salvataggio..." : modificaId ? "Salva modifiche" : "Salva verbale"}
             </button>
-            <button type="button" onClick={() => setTipoNuovo(null)} style={{ padding: "8px 16px" }}>
+            <button type="button" onClick={annullaForm} style={{ padding: "8px 16px" }}>
               Annulla
             </button>
           </div>
@@ -461,7 +547,7 @@ export default function VerbaliCsePage() {
       {verbali.length === 0 && <p style={{ color: "#666" }}>Nessun verbale registrato per ora.</p>}
       {verbali.map((v) => (
         <div key={v.id} style={{ border: "1px solid #eee", borderRadius: 8, padding: 12, marginBottom: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <strong>{etichettaTipo(v.tipo)}</strong>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ color: "#666", fontSize: 13 }}>
@@ -481,6 +567,37 @@ export default function VerbaliCsePage() {
               >
                 📄 Scarica PDF
               </button>
+              {puoCompilare && v.creato_da === mioId && (
+                <>
+                  <button
+                    onClick={() => iniziaModifica(v)}
+                    style={{
+                      padding: "4px 10px",
+                      fontSize: 12,
+                      borderRadius: 6,
+                      border: "1px solid #ddd",
+                      backgroundColor: "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    ✏️ Modifica
+                  </button>
+                  <button
+                    onClick={() => eliminaVerbale(v.id)}
+                    style={{
+                      padding: "4px 10px",
+                      fontSize: 12,
+                      borderRadius: 6,
+                      border: "1px solid #f5c6c6",
+                      backgroundColor: "#fdeeee",
+                      color: "#b00020",
+                      cursor: "pointer",
+                    }}
+                  >
+                    🗑️ Elimina
+                  </button>
+                </>
+              )}
             </div>
           </div>
           <pre
