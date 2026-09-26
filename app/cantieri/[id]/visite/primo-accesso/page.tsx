@@ -26,6 +26,7 @@ type Verbale = {
   tessera_riconoscimento_verificata: boolean;
   note: string | null;
   confermato: boolean;
+  creato_da: string | null;
   creato_il: string;
 };
 
@@ -49,6 +50,8 @@ export default function PrimoAccessoPage() {
   const [errore, setErrore] = useState<string | null>(null);
   const [puoCompilare, setPuoCompilare] = useState(false);
   const [mostraForm, setMostraForm] = useState(false);
+  const [modificaId, setModificaId] = useState<string | null>(null);
+  const [miaUid, setMiaUid] = useState<string | null>(null);
 
   const oggi = new Date();
   const dataOggi = oggi.toISOString().slice(0, 10);
@@ -75,6 +78,7 @@ export default function PrimoAccessoPage() {
     const { data: userData } = await supabase.auth.getUser();
     const uid = userData?.user?.id;
     if (!uid) return;
+    setMiaUid(uid);
 
     const { data: membroMio } = await supabase
       .from("cantiere_membri")
@@ -129,6 +133,50 @@ export default function PrimoAccessoPage() {
     return m.nome_impresa || m.profili?.email || "—";
   }
 
+  function annullaForm() {
+    setForm(formVuoto);
+    setModificaId(null);
+    setMostraForm(false);
+    setErrore(null);
+  }
+
+  function iniziaModifica(v: Verbale) {
+    setForm({
+      membroId: v.membro_id,
+      data: v.data,
+      ora: v.ora,
+      mansione: v.mansione || "",
+      pscConsegnato: v.psc_consegnato,
+      pscLettoCompreso: v.psc_letto_compreso,
+      dpiForniti: v.dpi_forniti,
+      formazioneVerificata: v.formazione_verificata,
+      idoneitaSanitariaVerificata: v.idoneita_sanitaria_verificata,
+      tesseraRiconoscimentoVerificata: v.tessera_riconoscimento_verificata,
+      note: v.note || "",
+      confermato: v.confermato,
+    });
+    setModificaId(v.id);
+    setMostraForm(true);
+    setErrore(null);
+  }
+
+  async function eliminaVerbale(id: string) {
+    if (!confirm("Eliminare questo verbale di primo accesso? L'operazione non è reversibile.")) return;
+    setErrore(null);
+
+    const { data, error } = await supabase.from("verbali_primo_accesso").delete().eq("id", id).select("id");
+
+    if (error) {
+      setErrore(error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      setErrore("Non hai i permessi per eliminare questo verbale (puoi eliminare solo quelli creati da te).");
+      return;
+    }
+    carica();
+  }
+
   async function salvaVerbale(e: React.FormEvent) {
     e.preventDefault();
     setErrore(null);
@@ -142,10 +190,7 @@ export default function PrimoAccessoPage() {
       return;
     }
 
-    const { data: userData } = await supabase.auth.getUser();
-
-    const { error } = await supabase.from("verbali_primo_accesso").insert({
-      cantiere_id: cantiereId,
+    const dati = {
       membro_id: form.membroId,
       data: form.data,
       ora: form.ora,
@@ -158,16 +203,38 @@ export default function PrimoAccessoPage() {
       tessera_riconoscimento_verificata: form.tesseraRiconoscimentoVerificata,
       note: form.note || null,
       confermato: form.confermato,
-      creato_da: userData?.user?.id ?? null,
-    });
+    };
 
-    if (error) {
-      setErrore(error.message);
-      return;
+    if (modificaId) {
+      const { data, error } = await supabase
+        .from("verbali_primo_accesso")
+        .update(dati)
+        .eq("id", modificaId)
+        .select("id");
+
+      if (error) {
+        setErrore(error.message);
+        return;
+      }
+      if (!data || data.length === 0) {
+        setErrore("Non hai i permessi per modificare questo verbale (puoi modificare solo quelli creati da te).");
+        return;
+      }
+    } else {
+      const { data: userData } = await supabase.auth.getUser();
+      const { error } = await supabase.from("verbali_primo_accesso").insert({
+        cantiere_id: cantiereId,
+        creato_da: userData?.user?.id ?? null,
+        ...dati,
+      });
+
+      if (error) {
+        setErrore(error.message);
+        return;
+      }
     }
 
-    setForm(formVuoto);
-    setMostraForm(false);
+    annullaForm();
     carica();
   }
 
@@ -230,16 +297,18 @@ export default function PrimoAccessoPage() {
 
       {errore && <p style={{ color: "red" }}>{errore}</p>}
 
-      {puoCompilare && (
+      {puoCompilare && !mostraForm && (
         <div style={{ marginBottom: 24 }}>
-          <button onClick={() => setMostraForm(!mostraForm)} style={{ padding: "8px 16px" }}>
-            {mostraForm ? "Annulla" : "+ Nuovo verbale di primo accesso"}
+          <button onClick={() => setMostraForm(true)} style={{ padding: "8px 16px" }}>
+            + Nuovo verbale di primo accesso
           </button>
         </div>
       )}
 
       {mostraForm && puoCompilare && (
         <form onSubmit={salvaVerbale} style={{ padding: 16, border: "1px solid #ddd", borderRadius: 8, marginBottom: 24 }}>
+          <h3 style={{ marginTop: 0 }}>{modificaId ? "Modifica verbale" : "Nuovo verbale"}</h3>
+
           <div style={{ marginBottom: 8 }}>
             <label style={{ fontSize: 13, color: "#555" }}>Impresa / persona</label>
             <select
@@ -324,25 +393,42 @@ export default function PrimoAccessoPage() {
             Confermo che quanto sopra riportato corrisponde al vero.
           </label>
 
-          <button type="submit" style={{ padding: "8px 16px" }}>
-            Salva verbale
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="submit" style={{ padding: "8px 16px" }}>
+              {modificaId ? "Salva modifiche" : "Salva verbale"}
+            </button>
+            <button type="button" onClick={annullaForm} style={{ padding: "8px 16px" }}>
+              Annulla
+            </button>
+          </div>
         </form>
       )}
 
       <h3>Verbali registrati</h3>
       {verbali.map((v) => (
         <div key={v.id} style={{ padding: 12, marginBottom: 8, border: "1px solid #ddd", borderRadius: 8 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <div>
               <strong>{nomeMembro(v.membro_id)}</strong>
               <div style={{ fontSize: 13, color: "#666" }}>
                 {new Date(v.data).toLocaleDateString("it-IT")} — {v.ora}
               </div>
             </div>
-            <button onClick={() => scaricaPdf(v)} style={{ padding: "6px 12px" }}>
-              📄 Scarica PDF
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => scaricaPdf(v)} style={{ padding: "6px 12px" }}>
+                📄 Scarica PDF
+              </button>
+              {puoCompilare && v.creato_da === miaUid && (
+                <>
+                  <button onClick={() => iniziaModifica(v)} style={{ padding: "6px 12px" }}>
+                    ✏️ Modifica
+                  </button>
+                  <button onClick={() => eliminaVerbale(v.id)} style={{ padding: "6px 12px", color: "#b00020" }}>
+                    🗑️ Elimina
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       ))}
