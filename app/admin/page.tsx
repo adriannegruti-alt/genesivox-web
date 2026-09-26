@@ -7,6 +7,8 @@ const RUOLI = [
   { value: "admin", label: "Admin" },
   { value: "rspp", label: "RSPP" },
   { value: "coordinatore", label: "CSE / CSP" },
+  { value: "responsabile_lavori", label: "Responsabile dei Lavori (RL)" },
+  { value: "direttore_lavori", label: "Direttore Lavori (DL)" },
   { value: "impresa", label: "Impresa" },
   { value: "lavoratore", label: "Lavoratore" },
 ];
