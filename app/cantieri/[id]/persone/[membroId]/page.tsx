@@ -15,18 +15,12 @@ const RUOLI = [
   { value: "asl_ispettorato", label: "ASL / Ispettorato" },
 ];
 
-// Ruoli che richiedono una nomina/accordo firmato già caricato prima di
-// poter essere assegnati: il nome deve corrispondere esattamente a quello
-// nel catalogo documenti (tabella tipi_documento).
 const DOCUMENTO_RICHIESTO_PER_RUOLO: Record<string, string> = {
   preposto: "Nomina a Preposto",
   capocantiere: "Nomina Capocantiere",
   rspp: "Nomina RSPP",
 };
 
-// "Comitente" e "Impresa edile" non sono più qui: sono ruoli veri con autorizzazioni
-// (vedi la sezione "Richiedi ruolo" nella pagina della persona in Imprese e subappaltatori),
-// non semplici etichette di attività commerciale.
 const ATTIVITA = [
   "Servizi per la sicurezza", "Noleggio attrezzature edili",
   "Impresa segnaletica stradale", "Agenzia comunicazione visiva", "Sistemi di sicurezza e vigilanza",
@@ -51,6 +45,41 @@ export default function RuoliAttivitaPage() {
   const [attivitaExtra, setAttivitaExtra] = useState<string[]>([]);
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
+  const [puoModificare, setPuoModificare] = useState(false);
+
+  async function calcolaPermessi() {
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData?.user?.id;
+    if (!uid) return;
+
+    const { data: profiloMio } = await supabase.from("profili").select("ruolo").eq("id", uid).maybeSingle();
+    if (profiloMio?.ruolo === "admin") {
+      setPuoModificare(true);
+      return;
+    }
+
+    const { data: cantiere } = await supabase.from("cantieri").select("creato_da").eq("id", cantiereId).maybeSingle();
+    if (cantiere?.creato_da === uid) {
+      setPuoModificare(true);
+      return;
+    }
+
+    const { data: membroMio } = await supabase
+      .from("cantiere_membri")
+      .select("id, ruolo")
+      .eq("cantiere_id", cantiereId)
+      .eq("profilo_id", uid)
+      .maybeSingle();
+
+    let ruoliMiei: string[] = membroMio?.ruolo ? [membroMio.ruolo] : [];
+    if (membroMio) {
+      const { data: ruoliExtraPropri } = await supabase.from("membro_ruoli").select("ruolo").eq("membro_id", membroMio.id);
+      ruoliMiei = ruoliMiei.concat((ruoliExtraPropri || []).map((r) => r.ruolo));
+    }
+
+    const autorizzato = ruoliMiei.some((r) => ["committente", "impresa_edile", "rspp"].includes(r));
+    setPuoModificare(autorizzato);
+  }
 
   async function carica() {
     const { data: m } = await supabase
@@ -70,15 +99,17 @@ export default function RuoliAttivitaPage() {
   }
 
   useEffect(() => {
-    if (membroId) carica();
+    if (membroId) {
+      carica();
+      calcolaPermessi();
+    }
   }, [membroId]);
 
   async function toggleRuolo(ruolo: string, attivo: boolean) {
+    if (!puoModificare) return;
     setErrore(null);
 
     if (!attivo) {
-      // Si sta per ACCENDERE questo ruolo: se richiede una nomina/accordo,
-      // verifica che il documento sia già stato caricato per questa persona.
       const documentoRichiesto = DOCUMENTO_RICHIESTO_PER_RUOLO[ruolo];
       if (documentoRichiesto) {
         const { count } = await supabase
@@ -109,6 +140,7 @@ export default function RuoliAttivitaPage() {
   }
 
   async function toggleAttivita(attivita: string, attivo: boolean) {
+    if (!puoModificare) return;
     setErrore(null);
     if (attivo) {
       const { error } = await supabase.from("membro_attivita").delete().eq("membro_id", membroId).eq("attivita", attivita);
@@ -133,10 +165,16 @@ export default function RuoliAttivitaPage() {
 
       {errore && <p style={{ color: "red" }}>{errore}</p>}
 
+      {!puoModificare && (
+        <p style={{ color: "#666", fontSize: 13, backgroundColor: "#f5f5f5", padding: 10, borderRadius: 6 }}>
+          Puoi consultare i ruoli e le attività di questa persona, ma non puoi modificarli.
+        </p>
+      )}
+
       <div style={{ backgroundColor: "#fff8e1", border: "1px solid #fbbc04", borderRadius: 8, padding: 12, marginBottom: 20, fontSize: 13 }}>
-        I ruoli <strong>Committente</strong> e <strong>Impresa edile</strong> non si attivano più da qui: la persona
-        deve richiederli dalla propria pagina in "Imprese e subappaltatori", e tu (o l'amministratore) dovrai
-        approvarli da "✅ Richieste di ruolo" nel menu del cantiere.
+        I ruoli <strong>Committente</strong> e <strong>Impresa edile</strong> non si attivano più da qui.
+        Il Committente viene assegnato automaticamente a chi crea il cantiere. L'Impresa edile la assegna
+        direttamente il Committente (o l'amministratore) dalla pagina della persona in "Imprese e subappaltatori".
       </div>
 
       <h3>Ruoli aggiuntivi</h3>
@@ -153,6 +191,7 @@ export default function RuoliAttivitaPage() {
             <button
               key={r.value}
               onClick={() => toggleRuolo(r.value, attivo)}
+              disabled={!puoModificare}
               title={richiedeDocumento ? `Richiede: ${DOCUMENTO_RICHIESTO_PER_RUOLO[r.value]}` : undefined}
               style={{
                 padding: "6px 12px",
@@ -160,7 +199,8 @@ export default function RuoliAttivitaPage() {
                 border: attivo ? "1px solid #1a73e8" : "1px solid #ccc",
                 backgroundColor: attivo ? "#1a73e8" : "#fff",
                 color: attivo ? "#fff" : "#333",
-                cursor: "pointer",
+                cursor: puoModificare ? "pointer" : "not-allowed",
+                opacity: puoModificare ? 1 : 0.6,
                 fontSize: 13,
               }}
             >
@@ -181,13 +221,15 @@ export default function RuoliAttivitaPage() {
             <button
               key={a}
               onClick={() => toggleAttivita(a, attivo)}
+              disabled={!puoModificare}
               style={{
                 padding: "6px 12px",
                 borderRadius: 16,
                 border: attivo ? "1px solid #34a853" : "1px solid #ccc",
                 backgroundColor: attivo ? "#34a853" : "#fff",
                 color: attivo ? "#fff" : "#333",
-                cursor: "pointer",
+                cursor: puoModificare ? "pointer" : "not-allowed",
+                opacity: puoModificare ? 1 : 0.6,
                 fontSize: 13,
               }}
             >
