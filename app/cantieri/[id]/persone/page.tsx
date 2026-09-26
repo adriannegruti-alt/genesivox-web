@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
-const RUOLI = [
+const RUOLI_BASE = [
   { value: "cse_csp", label: "CSE / CSP" },
   { value: "rspp", label: "RSPP" },
   { value: "capocantiere", label: "Capocantiere" },
@@ -15,10 +15,16 @@ const RUOLI = [
   { value: "asl_ispettorato", label: "ASL / Ispettorato" },
 ];
 
+const RUOLI_RISERVATI = [
+  { value: "responsabile_lavori", label: "Responsabile dei Lavori (RL)" },
+  { value: "direttore_lavori", label: "Direttore Lavori (DL)" },
+];
+
 const ETICHETTE_TUTTI_I_RUOLI: Record<string, string> = {
   committente: "Committente",
   impresa_edile: "Impresa edile",
-  ...Object.fromEntries(RUOLI.map((r) => [r.value, r.label])),
+  ...Object.fromEntries(RUOLI_BASE.map((r) => [r.value, r.label])),
+  ...Object.fromEntries(RUOLI_RISERVATI.map((r) => [r.value, r.label])),
 };
 
 type Membro = {
@@ -56,6 +62,9 @@ export default function CantiereDettaglioPage() {
 
   const [erroreCaricamento, setErroreCaricamento] = useState<string | null>(null);
   const [puoGestirePersone, setPuoGestirePersone] = useState(false);
+  const [puoNominareRuoliSpeciali, setPuoNominareRuoliSpeciali] = useState(false);
+
+  const ruoliSelezionabili = puoNominareRuoliSpeciali ? [...RUOLI_RISERVATI, ...RUOLI_BASE] : RUOLI_BASE;
 
   async function calcolaPermessi() {
     const { data: userData } = await supabase.auth.getUser();
@@ -65,12 +74,14 @@ export default function CantiereDettaglioPage() {
     const { data: profiloMio } = await supabase.from("profili").select("ruolo").eq("id", uid).maybeSingle();
     if (profiloMio?.ruolo === "admin") {
       setPuoGestirePersone(true);
+      setPuoNominareRuoliSpeciali(true);
       return;
     }
 
     const { data: cantiereRiga } = await supabase.from("cantieri").select("creato_da").eq("id", cantiereId).maybeSingle();
     if (cantiereRiga?.creato_da === uid) {
       setPuoGestirePersone(true);
+      setPuoNominareRuoliSpeciali(true);
       return;
     }
 
@@ -89,6 +100,9 @@ export default function CantiereDettaglioPage() {
 
     const autorizzato = ruoliMiei.some((r) => ["committente", "impresa_edile", "rspp"].includes(r));
     setPuoGestirePersone(autorizzato);
+
+    const pieniPoteri = ruoliMiei.some((r) => ["committente", "impresa_edile", "responsabile_lavori"].includes(r));
+    setPuoNominareRuoliSpeciali(pieniPoteri);
   }
 
   async function autocompletaDaEmail() {
@@ -311,7 +325,7 @@ export default function CantiereDettaglioPage() {
                     onChange={(e) => setRuoloModifica(e.target.value)}
                     style={{ padding: 6, width: "100%" }}
                   >
-                    {RUOLI.map((r) => (
+                    {ruoliSelezionabili.map((r) => (
                       <option key={r.value} value={r.value}>
                         {r.label}
                       </option>
@@ -405,13 +419,13 @@ export default function CantiereDettaglioPage() {
                 const nuovoRuolo = e.target.value;
                 setRuoloNuovo(nuovoRuolo);
                 if (!attivitaNuovo && !attivitaModificataAMano) {
-                  const etichetta = RUOLI.find((r) => r.value === nuovoRuolo)?.label;
+                  const etichetta = ruoliSelezionabili.find((r) => r.value === nuovoRuolo)?.label;
                   if (etichetta) setAttivitaNuovo(etichetta);
                 }
               }}
               style={{ width: "100%", padding: 8 }}
             >
-              {RUOLI.map((r) => (
+              {ruoliSelezionabili.map((r) => (
                 <option key={r.value} value={r.value}>
                   {r.label}
                 </option>
