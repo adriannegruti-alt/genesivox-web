@@ -25,6 +25,46 @@ export default function DettaglioTipoDocumentoMembroPage() {
   const [errore, setErrore] = useState<string | null>(null);
   const [uploadInCorso, setUploadInCorso] = useState(false);
   const [esitoAntivirus, setEsitoAntivirus] = useState<string | null>(null);
+  const [puoGestire, setPuoGestire] = useState(false);
+
+  async function calcolaPermessi() {
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData?.user?.id;
+    if (!uid) return;
+
+    if (uid === profiloId) {
+      setPuoGestire(true); // sei il proprietario dei documenti
+      return;
+    }
+
+    const { data: profiloMio } = await supabase.from("profili").select("ruolo").eq("id", uid).maybeSingle();
+    if (profiloMio?.ruolo === "admin") {
+      setPuoGestire(true);
+      return;
+    }
+
+    const { data: cantiere } = await supabase.from("cantieri").select("creato_da").eq("id", cantiereId).maybeSingle();
+    if (cantiere?.creato_da === uid) {
+      setPuoGestire(true);
+      return;
+    }
+
+    const { data: membro } = await supabase
+      .from("cantiere_membri")
+      .select("id, ruolo")
+      .eq("cantiere_id", cantiereId)
+      .eq("profilo_id", uid)
+      .maybeSingle();
+
+    let ruoliMiei: string[] = membro?.ruolo ? [membro.ruolo] : [];
+    if (membro) {
+      const { data: ruoliExtra } = await supabase.from("membro_ruoli").select("ruolo").eq("membro_id", membro.id);
+      ruoliMiei = ruoliMiei.concat((ruoliExtra || []).map((r) => r.ruolo));
+    }
+
+    const autorizzato = ruoliMiei.some((r) => ["committente", "impresa_edile", "rspp"].includes(r));
+    setPuoGestire(autorizzato);
+  }
 
   async function carica() {
     setErrore(null);
@@ -49,7 +89,10 @@ export default function DettaglioTipoDocumentoMembroPage() {
   }
 
   useEffect(() => {
-    if (cantiereId && profiloId && tipoId) carica();
+    if (cantiereId && profiloId && tipoId) {
+      carica();
+      calcolaPermessi();
+    }
   }, [cantiereId, profiloId, tipoId]);
 
   async function caricaFile(file: File) {
@@ -135,28 +178,34 @@ export default function DettaglioTipoDocumentoMembroPage() {
       </p>
       <h1>{tipo.nome}</h1>
 
-      <label
-        style={{
-          display: "inline-block",
-          padding: "10px 20px",
-          backgroundColor: "#1a73e8",
-          color: "#fff",
-          borderRadius: 6,
-          cursor: "pointer",
-          marginBottom: 16,
-        }}
-      >
-        {uploadInCorso ? "Caricamento..." : "+ Carica nuovo file"}
-        <input
-          type="file"
-          accept={ACCEPT_INPUT_FILE}
-          style={{ display: "none" }}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) caricaFile(file);
+      {puoGestire ? (
+        <label
+          style={{
+            display: "inline-block",
+            padding: "10px 20px",
+            backgroundColor: "#1a73e8",
+            color: "#fff",
+            borderRadius: 6,
+            cursor: "pointer",
+            marginBottom: 16,
           }}
-        />
-      </label>
+        >
+          {uploadInCorso ? "Caricamento..." : "+ Carica nuovo file"}
+          <input
+            type="file"
+            accept={ACCEPT_INPUT_FILE}
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) caricaFile(file);
+            }}
+          />
+        </label>
+      ) : (
+        <p style={{ color: "#666", fontSize: 13, backgroundColor: "#f5f5f5", padding: 10, borderRadius: 6 }}>
+          Puoi consultare i file qui sotto, ma non puoi caricarne di nuovi né eliminarli per questa persona.
+        </p>
+      )}
 
       {errore && <p style={{ color: "red" }}>{errore}</p>}
       {esitoAntivirus && (
@@ -182,12 +231,14 @@ export default function DettaglioTipoDocumentoMembroPage() {
                 <button onClick={() => apriFile(d.storage_path)} style={{ marginRight: 8, padding: "4px 10px" }}>
                   Apri
                 </button>
-                <button
-                  onClick={() => eliminaFile(d)}
-                  style={{ padding: "4px 10px", color: "#c0392b", border: "1px solid #c0392b", borderRadius: 4, background: "none" }}
-                >
-                  Elimina
-                </button>
+                {puoGestire && (
+                  <button
+                    onClick={() => eliminaFile(d)}
+                    style={{ padding: "4px 10px", color: "#c0392b", border: "1px solid #c0392b", borderRadius: 4, background: "none" }}
+                  >
+                    Elimina
+                  </button>
+                )}
               </td>
             </tr>
           ))}
