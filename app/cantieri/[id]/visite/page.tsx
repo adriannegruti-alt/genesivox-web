@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
 type Visita = {
@@ -138,6 +139,10 @@ export default function VisiteIspettivePage() {
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 700 }}>
       <h1>Registro Visite Ispettive — {cantiere?.nome}</h1>
+
+      <p>
+        <Link href={`/cantieri/${cantiereId}/visite/primo-accesso`}>📋 Verbale di Primo Accesso →</Link>
+      </p>
 
       {errore && <p style={{ color: "red" }}>{errore}</p>}
 
