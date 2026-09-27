@@ -14,6 +14,7 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
   const [puoVedereDirezioneLavori, setPuoVedereDirezioneLavori] = useState(false);
   const [soloDirezioneLavori, setSoloDirezioneLavori] = useState(false);
   const [soloLavoratore, setSoloLavoratore] = useState(false);
+  const [nascondiSoloPreventivi, setNascondiSoloPreventivi] = useState(false);
 
   useEffect(() => {
     async function carica() {
@@ -34,6 +35,7 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
         setPuoVedereDirezioneLavori(true);
         setSoloDirezioneLavori(false);
         setSoloLavoratore(false);
+        setNascondiSoloPreventivi(false);
         return;
       }
 
@@ -42,6 +44,7 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
         setPuoVedereDirezioneLavori(true);
         setSoloDirezioneLavori(false);
         setSoloLavoratore(false);
+        setNascondiSoloPreventivi(false);
         return;
       }
 
@@ -70,10 +73,15 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
       const eSoloDirettoreLavori = ruoliMiei.includes("direttore_lavori") && !haPieniPoteri;
       setSoloDirezioneLavori(eSoloDirettoreLavori);
 
-      // Chi ha SOLO il ruolo "lavoratore" (nessun altro ruolo principale o extra) non deve vedere
+      // Chi ha SOLO il ruolo "lavoratore" (nessun altro ruolo principale o extra) non vede
       // Preventivi, Imprese e subappaltatori, Visite ispettive e Verbali CSE/CSP nel menu.
       const eSoloLavoratore = ruoliMiei.length > 0 && ruoliMiei.every((r) => r === "lavoratore");
       setSoloLavoratore(eSoloLavoratore);
+
+      // Capocantiere e Preposto (dell'impresa edile del cantiere): vedono tutto il menu
+      // TRANNE Preventivi, che resta riservato a chi ha pieni poteri (o RSPP/CSE-CSP se già previsto altrove).
+      const eCapocantiereOPreposto = !eSoloLavoratore && ruoliMiei.some((r) => ["capocantiere", "preposto"].includes(r)) && !haPieniPoteri;
+      setNascondiSoloPreventivi(eCapocantiereOPreposto);
     }
     calcolaMenu();
   }, [cantiereId]);
@@ -82,7 +90,7 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
     { href: `/cantieri/${cantiereId}`, label: "🏗️ Panoramica", esatto: true },
     { href: `/cantieri/${cantiereId}/persone`, label: "👥 Persone assegnate" },
     { href: `/cantieri/${cantiereId}/documenti`, label: "📄 I miei documenti" },
-    ...(soloLavoratore ? [] : [{ href: `/cantieri/${cantiereId}/preventivi`, label: "💰 Preventivi" }]),
+    ...(soloLavoratore || nascondiSoloPreventivi ? [] : [{ href: `/cantieri/${cantiereId}/preventivi`, label: "💰 Preventivi" }]),
     { href: `/cantieri/${cantiereId}/presenze`, label: "🕒 Presenze" },
     ...(soloLavoratore ? [] : [{ href: `/cantieri/${cantiereId}/imprese`, label: "🏢 Imprese e subappaltatori" }]),
     ...(soloLavoratore ? [] : [{ href: `/cantieri/${cantiereId}/visite`, label: "🪪 Visite ispettive" }]),
