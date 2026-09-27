@@ -6,6 +6,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
 const RUOLI = [
+  { value: "responsabile_lavori", label: "Responsabile dei Lavori (RL)" },
   { value: "cse_csp", label: "CSE / CSP" },
   { value: "rspp", label: "RSPP" },
   { value: "capocantiere", label: "Capocantiere" },
@@ -176,6 +177,11 @@ export default function RuoliAttivitaPage() {
         I ruoli <strong>Committente</strong> e <strong>Impresa edile</strong> non si attivano più da qui.
         Il Committente viene assegnato automaticamente a chi crea il cantiere. L'Impresa edile la assegna
         direttamente il Committente (o l'amministratore) dalla pagina della persona in "Imprese e subappaltatori".
+        <br /><br />
+        Nota: <strong>Responsabile dei Lavori (RL)</strong> può anche essere assegnato come ruolo <strong>principale</strong>
+        dalla pagina "Persone assegnate" → Modifica. Assegnandolo qui invece, resta un ruolo <strong>extra</strong> che si
+        aggiunge al ruolo principale già impostato — usa questa opzione solo se vuoi che la persona mantenga
+        il suo ruolo principale attuale e ottenga in più i pieni poteri del RL.
       </div>
 
       <h3>Ruoli aggiuntivi</h3>
