@@ -140,12 +140,12 @@ export default function DisegniEsecuzionePage() {
       mappa.get(r.gruppo_id)!.push(r);
     }
     const risultato: Gruppo[] = [];
-    for (const [gruppo_id, versioni] of mappa) {
+    Array.from(mappa.entries()).forEach(([gruppo_id, versioni]) => {
       versioni.sort((a, b) => b.versione - a.versione);
       const corrente = versioni.find((v) => v.e_ultima) || versioni[0];
       const storico = versioni.filter((v) => v.id !== corrente.id);
       risultato.push({ gruppo_id, corrente, storico });
-    }
+    });
     risultato.sort((a, b) => new Date(b.corrente.creato_il).getTime() - new Date(a.corrente.creato_il).getTime());
     return risultato;
   })();
