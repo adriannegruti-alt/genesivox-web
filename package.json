@@ -1,4 +1,4 @@
-{
+{ "jspdf": "^2.5.2",
   "name": "genesivox-web",
   "version": "0.1.0",
   "private": true,
