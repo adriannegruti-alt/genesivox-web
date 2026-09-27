@@ -328,20 +328,19 @@ export default function DisegniEsecuzionePage() {
     const { data, error } = await supabase.storage.from("disegni-esecuzione").createSignedUrl(riga.storage_path, 120);
     if (error || !data) { setErrore("Impossibile aprire il file."); return; }
 
-    try {
-      // Scarichiamo il file noi stessi (invece di lasciarlo scaricare
-      // direttamente all'iframe/immagine) così possiamo salvarne una copia
-      // nella cache locale per la prossima volta, anche senza connessione.
-      const risposta = await fetch(data.signedUrl);
-      const blob = await risposta.blob();
-      await salvaFileOffline(riga.storage_path, blob);
-      const urlLocale = URL.createObjectURL(blob);
-      setFileAperto({ url: urlLocale, tipo, titolo, offline: false });
-    } catch {
-      // Se il download fallisce per qualche motivo, mostriamo comunque il
-      // file direttamente dal link firmato (comportamento di prima).
-      setFileAperto({ url: data.signedUrl, tipo, titolo, offline: false });
-    }
+    // ONLINE: mostriamo il file dal link diretto del server, il modo più
+    // affidabile su tutti i dispositivi (specialmente PDF su telefono).
+    setFileAperto({ url: data.signedUrl, tipo, titolo, offline: false });
+
+    // In parallelo, senza bloccare la visualizzazione, scarichiamo una copia
+    // e la salviamo in locale per poterla aprire anche offline in futuro.
+    fetch(data.signedUrl)
+      .then((risposta) => risposta.blob())
+      .then((blob) => salvaFileOffline(riga.storage_path, blob))
+      .catch(() => {
+        // Se il salvataggio in background fallisce, non è un problema ora:
+        // semplicemente quel disegno non sarà disponibile offline.
+      });
   }
 
   if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
