@@ -13,6 +13,7 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
   const [cantiere, setCantiere] = useState<any>(null);
   const [puoVedereDirezioneLavori, setPuoVedereDirezioneLavori] = useState(false);
   const [soloDirezioneLavori, setSoloDirezioneLavori] = useState(false);
+  const [soloLavoratore, setSoloLavoratore] = useState(false);
 
   useEffect(() => {
     async function carica() {
@@ -32,6 +33,7 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
       if (profiloMio?.ruolo === "admin") {
         setPuoVedereDirezioneLavori(true);
         setSoloDirezioneLavori(false);
+        setSoloLavoratore(false);
         return;
       }
 
@@ -39,6 +41,7 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
       if (cantiereRiga?.creato_da === uid) {
         setPuoVedereDirezioneLavori(true);
         setSoloDirezioneLavori(false);
+        setSoloLavoratore(false);
         return;
       }
 
@@ -66,19 +69,24 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
       const haPieniPoteri = ruoliMiei.some((r) => ["committente", "impresa_edile", "responsabile_lavori"].includes(r));
       const eSoloDirettoreLavori = ruoliMiei.includes("direttore_lavori") && !haPieniPoteri;
       setSoloDirezioneLavori(eSoloDirettoreLavori);
+
+      // Chi ha SOLO il ruolo "lavoratore" (nessun altro ruolo principale o extra) non deve vedere
+      // Preventivi, Imprese e subappaltatori, Visite ispettive e Verbali CSE/CSP nel menu.
+      const eSoloLavoratore = ruoliMiei.length > 0 && ruoliMiei.every((r) => r === "lavoratore");
+      setSoloLavoratore(eSoloLavoratore);
     }
     calcolaMenu();
   }, [cantiereId]);
 
-  const vociComplete = [
+  const vociBase = [
     { href: `/cantieri/${cantiereId}`, label: "🏗️ Panoramica", esatto: true },
     { href: `/cantieri/${cantiereId}/persone`, label: "👥 Persone assegnate" },
     { href: `/cantieri/${cantiereId}/documenti`, label: "📄 I miei documenti" },
-    { href: `/cantieri/${cantiereId}/preventivi`, label: "💰 Preventivi" },
+    ...(soloLavoratore ? [] : [{ href: `/cantieri/${cantiereId}/preventivi`, label: "💰 Preventivi" }]),
     { href: `/cantieri/${cantiereId}/presenze`, label: "🕒 Presenze" },
-    { href: `/cantieri/${cantiereId}/imprese`, label: "🏢 Imprese e subappaltatori" },
-    { href: `/cantieri/${cantiereId}/visite`, label: "🪪 Visite ispettive" },
-    { href: `/cantieri/${cantiereId}/verbali`, label: "📝 Verbali CSE/CSP" },
+    ...(soloLavoratore ? [] : [{ href: `/cantieri/${cantiereId}/imprese`, label: "🏢 Imprese e subappaltatori" }]),
+    ...(soloLavoratore ? [] : [{ href: `/cantieri/${cantiereId}/visite`, label: "🪪 Visite ispettive" }]),
+    ...(soloLavoratore ? [] : [{ href: `/cantieri/${cantiereId}/verbali`, label: "📝 Verbali CSE/CSP" }]),
     ...(puoVedereDirezioneLavori
       ? [{ href: `/cantieri/${cantiereId}/direzione-lavori`, label: "🏛️ Direzione Lavori" }]
       : []),
@@ -89,7 +97,7 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
     { href: `/cantieri/${cantiereId}/direzione-lavori`, label: "🏛️ Direzione Lavori" },
   ];
 
-  const voci = soloDirezioneLavori ? vociSoloDL : vociComplete;
+  const voci = soloDirezioneLavori ? vociSoloDL : vociBase;
 
   return (
     <div className="cantiere-body" style={{ display: "flex", minHeight: "100vh", fontFamily: "sans-serif" }}>
