@@ -6,6 +6,7 @@ import Link from "next/link";
 import { jsPDF } from "jspdf";
 import { supabase } from "@/lib/supabaseClient";
 import { comprimiImmagine, verificaAntivirus, validaFile } from "@/lib/caricamentoFile";
+import { salvaFileOffline, leggiFileOffline } from "@/lib/cacheOffline";
 
 // Per questa area accettiamo solo PDF o immagini (le immagini vengono
 // convertite in PDF automaticamente prima del caricamento).
@@ -56,12 +57,16 @@ export default function DisegniEsecuzionePage() {
   const params = useParams();
   const cantiereId = params.id as string;
 
+  const CHIAVE_RIGHE_LOCALI = `disegni_righe_${cantiereId}`;
+  const CHIAVE_PERMESSI_LOCALI = `disegni_permessi_${cantiereId}`;
+
   const [caricamento, setCaricamento] = useState(true);
   const [puoVedere, setPuoVedere] = useState(false);
   const [puoGestire, setPuoGestire] = useState(false);
   const [righe, setRighe] = useState<RigaDisegno[]>([]);
   const [errore, setErrore] = useState<string | null>(null);
   const [espansi, setEspansi] = useState<Set<string>>(new Set());
+  const [modalitaOffline, setModalitaOffline] = useState(false);
 
   // form nuovo disegno
   const [mostraForm, setMostraForm] = useState(false);
@@ -72,10 +77,22 @@ export default function DisegniEsecuzionePage() {
   const [gruppoInAggiornamento, setGruppoInAggiornamento] = useState<string | null>(null);
 
   // viewer
-  const [fileAperto, setFileAperto] = useState<{ url: string; tipo: string; titolo: string } | null>(null);
+  const [fileAperto, setFileAperto] = useState<{ url: string; tipo: string; titolo: string; offline: boolean } | null>(null);
   const [zoom, setZoom] = useState(1);
 
   async function calcolaPermessi() {
+    // OFFLINE: usiamo l'ultimo risultato salvato su questo dispositivo,
+    // così chi ha già i permessi non li perde solo perché non c'è rete.
+    if (!navigator.onLine) {
+      const salvato = localStorage.getItem(CHIAVE_PERMESSI_LOCALI);
+      if (salvato) {
+        const { puoVedere: v, puoGestire: g } = JSON.parse(salvato);
+        setPuoVedere(v);
+        setPuoGestire(g);
+      }
+      return;
+    }
+
     const { data: userData } = await supabase.auth.getUser();
     const uid = userData?.user?.id;
     if (!uid) return;
@@ -84,6 +101,7 @@ export default function DisegniEsecuzionePage() {
     if (profiloMio?.ruolo === "admin") {
       setPuoVedere(true);
       setPuoGestire(true);
+      localStorage.setItem(CHIAVE_PERMESSI_LOCALI, JSON.stringify({ puoVedere: true, puoGestire: true }));
       return;
     }
 
@@ -91,6 +109,7 @@ export default function DisegniEsecuzionePage() {
     if (cantiere?.creato_da === uid) {
       setPuoVedere(true);
       setPuoGestire(true);
+      localStorage.setItem(CHIAVE_PERMESSI_LOCALI, JSON.stringify({ puoVedere: true, puoGestire: true }));
       return;
     }
 
@@ -112,15 +131,27 @@ export default function DisegniEsecuzionePage() {
 
     setPuoGestire(gestisce);
     setPuoVedere(vede);
+    localStorage.setItem(CHIAVE_PERMESSI_LOCALI, JSON.stringify({ puoVedere: vede, puoGestire: gestisce }));
   }
 
   async function carica() {
+    // OFFLINE: usiamo l'ultimo elenco salvato su questo dispositivo.
+    if (!navigator.onLine) {
+      const salvato = localStorage.getItem(CHIAVE_RIGHE_LOCALI);
+      setRighe(salvato ? JSON.parse(salvato) : []);
+      setModalitaOffline(true);
+      setCaricamento(false);
+      return;
+    }
+
+    setModalitaOffline(false);
     const { data } = await supabase
       .from("disegni_esecuzione")
       .select("id, cantiere_id, gruppo_id, titolo, versione, e_ultima, storage_path, nome_file, creato_il")
       .eq("cantiere_id", cantiereId)
       .order("creato_il", { ascending: false });
     setRighe(data || []);
+    if (data) localStorage.setItem(CHIAVE_RIGHE_LOCALI, JSON.stringify(data));
     setCaricamento(false);
   }
 
@@ -275,10 +306,42 @@ export default function DisegniEsecuzionePage() {
   }
 
   async function apriFile(riga: RigaDisegno) {
+    setErrore(null);
+    setZoom(1);
+    const tipo = riga.nome_file?.toLowerCase().endsWith(".pdf") ? "pdf" : "immagine";
+    const titolo = `${riga.titolo} (v${riga.versione})`;
+
+    if (!navigator.onLine) {
+      // OFFLINE: proviamo a leggere dalla cache locale del dispositivo.
+      const blob = await leggiFileOffline(riga.storage_path);
+      if (!blob) {
+        setErrore(
+          "Sei offline e questo disegno non è mai stato aperto con connessione su questo dispositivo: non è disponibile."
+        );
+        return;
+      }
+      const urlLocale = URL.createObjectURL(blob);
+      setFileAperto({ url: urlLocale, tipo, titolo: `${titolo} — modalità offline`, offline: true });
+      return;
+    }
+
     const { data, error } = await supabase.storage.from("disegni-esecuzione").createSignedUrl(riga.storage_path, 120);
     if (error || !data) { setErrore("Impossibile aprire il file."); return; }
-    setZoom(1);
-    setFileAperto({ url: data.signedUrl, tipo: riga.nome_file?.toLowerCase().endsWith(".pdf") ? "pdf" : "immagine", titolo: `${riga.titolo} (v${riga.versione})` });
+
+    try {
+      // Scarichiamo il file noi stessi (invece di lasciarlo scaricare
+      // direttamente all'iframe/immagine) così possiamo salvarne una copia
+      // nella cache locale per la prossima volta, anche senza connessione.
+      const risposta = await fetch(data.signedUrl);
+      const blob = await risposta.blob();
+      await salvaFileOffline(riga.storage_path, blob);
+      const urlLocale = URL.createObjectURL(blob);
+      setFileAperto({ url: urlLocale, tipo, titolo, offline: false });
+    } catch {
+      // Se il download fallisce per qualche motivo, mostriamo comunque il
+      // file direttamente dal link firmato (comportamento di prima).
+      setFileAperto({ url: data.signedUrl, tipo, titolo, offline: false });
+    }
   }
 
   if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
@@ -288,7 +351,9 @@ export default function DisegniEsecuzionePage() {
       <div style={{ padding: 24, fontFamily: "sans-serif" }}>
         <p><Link href={`/cantieri/${cantiereId}`}>← Torna alla Panoramica</Link></p>
         <p style={{ color: "#666", fontSize: 13, backgroundColor: "#f5f5f5", padding: 10, borderRadius: 6 }}>
-          Non hai accesso ai Disegni di esecuzione di questo cantiere.
+          {modalitaOffline
+            ? "Sei offline e questo dispositivo non ha ancora un permesso salvato per quest'area: collegati almeno una volta con connessione."
+            : "Non hai accesso ai Disegni di esecuzione di questo cantiere."}
         </p>
       </div>
     );
@@ -304,9 +369,16 @@ export default function DisegniEsecuzionePage() {
         per scoraggiare il salvataggio non autorizzato.
       </p>
 
+      {modalitaOffline && (
+        <p style={{ fontSize: 13, backgroundColor: "#fff3cd", color: "#8a6d00", padding: 10, borderRadius: 6 }}>
+          ⚠ Sei offline: stai vedendo l'elenco salvato in precedenza su questo dispositivo. Solo i disegni già
+          aperti almeno una volta con connessione sono consultabili.
+        </p>
+      )}
+
       {errore && <p style={{ color: "red" }}>{errore}</p>}
 
-      {puoGestire && (
+      {puoGestire && !modalitaOffline && (
         <div style={{ marginBottom: 20 }}>
           {!mostraForm ? (
             <button
@@ -375,7 +447,7 @@ export default function DisegniEsecuzionePage() {
                 <button onClick={() => apriFile(g.corrente)} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #d0d5dd", cursor: "pointer" }}>
                   Apri
                 </button>
-                {puoGestire && (
+                {puoGestire && !modalitaOffline && (
                   <>
                     <label style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #1a73e8", color: "#1a73e8", cursor: "pointer" }}>
                       Aggiorna
@@ -432,7 +504,15 @@ export default function DisegniEsecuzionePage() {
             <div>
               <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} style={{ marginRight: 6, padding: "6px 12px", cursor: "pointer" }}>−</button>
               <button onClick={() => setZoom((z) => Math.min(4, z + 0.25))} style={{ marginRight: 12, padding: "6px 12px", cursor: "pointer" }}>+</button>
-              <button onClick={() => setFileAperto(null)} style={{ padding: "6px 12px", cursor: "pointer" }}>✕ Chiudi</button>
+              <button
+                onClick={() => {
+                  if (fileAperto.url.startsWith("blob:")) URL.revokeObjectURL(fileAperto.url);
+                  setFileAperto(null);
+                }}
+                style={{ padding: "6px 12px", cursor: "pointer" }}
+              >
+                ✕ Chiudi
+              </button>
             </div>
           </div>
           <div style={{ flex: 1, width: "100%", overflow: "auto", display: "flex", justifyContent: "center", padding: 20 }}>
