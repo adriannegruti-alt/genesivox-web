@@ -254,6 +254,8 @@ export default function AdminPage() {
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif" }}>
       <h1>Amministrazione clienti</h1>
+        <p><Link href="/admin/limiti">→ Limiti account (cantieri e storage)</Link></p>
+
 
       <div style={{ marginBottom: 28 }}>
         <h2 style={{ fontSize: 17, marginBottom: 4 }}>
