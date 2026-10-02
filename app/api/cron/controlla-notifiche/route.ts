@@ -38,6 +38,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ errore: erroreDocumenti.message }, { status: 500 });
   }
 
+    const debugDocumenti = (documenti ?? []).map((d: any) => ({
+    nome_file: d.nome_file,
+    data_scadenza: d.data_scadenza,
+    giorni: giorniMancanti(d.data_scadenza as string),
+  }));
   for (const doc of documenti ?? []) {
     const giorni = giorniMancanti(doc.data_scadenza as string);
     if (!SOGLIE_GIORNI.includes(giorni)) continue;
