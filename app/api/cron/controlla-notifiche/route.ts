@@ -16,8 +16,11 @@ function giorniMancanti(dataScadenza: string): number {
 
 export async function GET(request: NextRequest) {
   // Protezione: solo Vercel (con il nostro CRON_SECRET) può chiamare questo indirizzo
-  const autorizzazione = request.headers.get("authorization");
-  if (autorizzazione !== `Bearer ${process.env.CRON_SECRET}`) {
+    const autorizzazione = request.headers.get("authorization");
+  const secretDaUrl = request.nextUrl.searchParams.get("secret");
+  const autorizzato =
+    autorizzazione === `Bearer ${process.env.CRON_SECRET}` || secretDaUrl === process.env.CRON_SECRET;
+  if (!autorizzato) {
     return NextResponse.json({ errore: "Non autorizzato" }, { status: 401 });
   }
 
