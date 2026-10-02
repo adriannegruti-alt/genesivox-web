@@ -82,8 +82,7 @@ export async function GET(request: NextRequest) {
       ${giorni > 0 ? `scade tra <strong>${giorni} giorni</strong> (il ${doc.data_scadenza}).` : "<strong>scade oggi</strong>."}</p>
       <p>Si prega di provvedere al rinnovo quanto prima tramite la piattaforma GENESIVOX.</p>
     `;
-
-    const risultato = await inviaEmail([...new Set(destinatari)], oggetto, corpoHtml, [...new Set(copiaConoscenza)]);
+    const risultato = await inviaEmail(Array.from(new Set(destinatari)), oggetto, corpoHtml, Array.from(new Set(copiaConoscenza)));
 
     if (risultato.ok) {
       await supabase.from("notifiche_inviate").insert({
