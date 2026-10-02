@@ -88,4 +88,71 @@ export async function GET(request: NextRequest) {
     const oggetto =
       giorni > 0
         ? `⚠️ Documento in scadenza tra ${giorni} giorni – ${nomeCantiere}`
-        : `🚨 Documento scaduto oggi
+        : `🚨 Documento scaduto oggi – ${nomeCantiere}`;
+
+    const corpoHtml = `
+      <p>Il documento <strong>${doc.tipo_documento}</strong> (${doc.nome_file}) del cantiere <strong>${nomeCantiere}</strong>
+      ${giorni > 0 ? `scade tra <strong>${giorni} giorni</strong> (il ${doc.data_scadenza}).` : "<strong>scade oggi</strong>."}</p>
+      <p>Si prega di provvedere al rinnovo quanto prima tramite la piattaforma GENESIVOX.</p>
+    `;
+
+    const risultato = await inviaEmail(Array.from(new Set(destinatari)), oggetto, corpoHtml, Array.from(new Set(copiaConoscenza)));
+
+    if (risultato.ok) {
+      await supabase.from("notifiche_inviate").insert({
+        tipo_evento: "scadenza_documento",
+        riferimento_id: doc.id,
+        soglia,
+      });
+      emailScadenzeInviate++;
+    }
+  }
+
+  const { data: accountVicini } = await supabase
+    .from("riepilogo_limiti_account")
+    .select("*")
+    .eq("vicino_al_limite", true);
+
+  const meseCorrente = new Date().toISOString().slice(0, 7);
+
+  for (const riga of accountVicini ?? []) {
+    const idProfilo = (riga as any).id_profilo;
+    if (!idProfilo) continue;
+
+    const { data: giaInviata } = await supabase
+      .from("notifiche_inviate")
+      .select("id")
+      .eq("tipo_evento", "limite_account")
+      .eq("riferimento_id", idProfilo)
+      .eq("soglia", meseCorrente)
+      .maybeSingle();
+
+    if (giaInviata) continue;
+
+    const { data: profilo } = await supabase
+      .from("profili")
+      .select("email")
+      .eq("id", idProfilo)
+      .maybeSingle();
+
+    if (!profilo?.email) continue;
+
+    const corpoHtml = `
+      <p>Il tuo account GENESIVOX si sta avvicinando al limite del tuo piano.</p>
+      <p>Controlla la situazione nella tua area account per valutare se effettuare un upgrade.</p>
+    `;
+
+    const risultato = await inviaEmail(profilo.email, "⚠️ Stai per raggiungere il limite del tuo piano GENESIVOX", corpoHtml);
+
+    if (risultato.ok) {
+      await supabase.from("notifiche_inviate").insert({
+        tipo_evento: "limite_account",
+        riferimento_id: idProfilo,
+        soglia: meseCorrente,
+      });
+      emailLimitiInviate++;
+    }
+  }
+
+  return NextResponse.json({ ok: true, emailScadenzeInviate, emailLimitiInviate, debugDocumenti, debugMembri });
+}
