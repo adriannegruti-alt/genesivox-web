@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
 
     const { data: membri, error: erroreMembri } = await supabase
       .from("cantiere_membri")
-      .select("ruolo, profili(email)")
+      .select("ruolo, profili!profilo_id(email)")
       .eq("cantiere_id", doc.cantiere_id)
       .in("ruolo", [...RUOLI_DESTINATARI, ...RUOLI_COPIA_CONOSCENZA]);
 
