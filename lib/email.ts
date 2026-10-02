@@ -8,14 +8,16 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const MITTENTE = "GENESIVOX <notifiche@genesivox.com>";
 
 export async function inviaEmail(
-  destinatario: string,
+  destinatari: string | string[],
   oggetto: string,
-  corpoHtml: string
+  corpoHtml: string,
+  copiaConoscenza?: string | string[]
 ): Promise<{ ok: boolean; errore?: string }> {
   try {
     const risultato = await resend.emails.send({
       from: MITTENTE,
-      to: destinatario,
+      to: destinatari,
+      cc: copiaConoscenza,
       subject: oggetto,
       html: corpoHtml,
     });
