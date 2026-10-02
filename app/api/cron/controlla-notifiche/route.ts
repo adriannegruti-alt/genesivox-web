@@ -147,3 +147,4 @@ export async function GET(request: NextRequest) {
   }
 
     return NextResponse.json({ ok: true, emailScadenzeInviate, emailLimitiInviate, debugDocumenti });
+  }
