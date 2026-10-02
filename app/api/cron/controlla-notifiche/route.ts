@@ -16,10 +16,7 @@ function giorniMancanti(dataScadenza: string): number {
 
 export async function GET(request: NextRequest) {
   const autorizzazione = request.headers.get("authorization");
-  const secretDaUrl = request.nextUrl.searchParams.get("secret");
-  const autorizzato =
-    autorizzazione === `Bearer ${process.env.CRON_SECRET}` || secretDaUrl === process.env.CRON_SECRET;
-  if (!autorizzato) {
+  if (autorizzazione !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ errore: "Non autorizzato" }, { status: 401 });
   }
 
@@ -35,14 +32,6 @@ export async function GET(request: NextRequest) {
   if (erroreDocumenti) {
     return NextResponse.json({ errore: erroreDocumenti.message }, { status: 500 });
   }
-
-  const debugDocumenti = (documenti ?? []).map((d: any) => ({
-    nome_file: d.nome_file,
-    data_scadenza: d.data_scadenza,
-    giorni: giorniMancanti(d.data_scadenza as string),
-  }));
-
-  const debugMembri: any[] = [];
 
   for (const doc of documenti ?? []) {
     const giorni = giorniMancanti(doc.data_scadenza as string);
@@ -60,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     if (giaInviata) continue;
 
-    const { data: membri, error: erroreMembri } = await supabase
+    const { data: membri } = await supabase
       .from("cantiere_membri")
       .select("ruolo, profili!profilo_id(email)")
       .eq("cantiere_id", doc.cantiere_id)
@@ -73,14 +62,6 @@ export async function GET(request: NextRequest) {
     const copiaConoscenza = (membri ?? [])
       .filter((m: any) => RUOLI_COPIA_CONOSCENZA.includes(m.ruolo) && m.profili?.email)
       .map((m: any) => m.profili.email as string);
-
-    debugMembri.push({
-      documento: doc.nome_file,
-      cantiere_id: doc.cantiere_id,
-      erroreMembri: erroreMembri?.message ?? null,
-      membriTrovati: membri,
-      destinatari,
-    });
 
     if (destinatari.length === 0) continue;
 
@@ -154,5 +135,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, emailScadenzeInviate, emailLimitiInviate, debugDocumenti, debugMembri });
+  return NextResponse.json({ ok: true, emailScadenzeInviate, emailLimitiInviate });
 }
