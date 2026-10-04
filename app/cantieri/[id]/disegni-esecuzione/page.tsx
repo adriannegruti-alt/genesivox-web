@@ -502,7 +502,7 @@ export default function DisegniEsecuzionePage() {
           <div style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: 12, color: "#fff" }}>
             <strong>{fileAperto.titolo}</strong>
             <div>
-              <button onClick={() => setZoom((z) => Math.max(0.15, z - 0.15))} style={{ marginRight: 6, padding: "6px 12px", cursor: "pointer" }}>−</button>
+              <button onClick={() => setZoom((z) => Math.max(0.05, z - 0.1))} style={{ marginRight: 6, padding: "6px 12px", cursor: "pointer" }}>−</button>
               <button onClick={() => setZoom((z) => Math.min(4, z + 0.25))} style={{ marginRight: 12, padding: "6px 12px", cursor: "pointer" }}>+</button>
               <button
                 onClick={() => {
