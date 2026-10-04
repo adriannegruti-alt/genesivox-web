@@ -7,6 +7,7 @@ import { jsPDF } from "jspdf";
 import { supabase } from "@/lib/supabaseClient";
 import { comprimiImmagine, verificaAntivirus, validaFile } from "@/lib/caricamentoFile";
 import { salvaFileOffline, leggiFileOffline } from "@/lib/cacheOffline";
+import VisualizzatorePdf from "@/components/VisualizzatorePdf";
 
 // Per questa area accettiamo solo PDF o immagini (le immagini vengono
 // convertite in PDF automaticamente prima del caricamento).
@@ -515,11 +516,8 @@ export default function DisegniEsecuzionePage() {
             </div>
           </div>
           <div style={{ flex: 1, width: "100%", overflow: "auto", display: "flex", justifyContent: "center", padding: 20 }}>
-            {fileAperto.tipo === "pdf" ? (
-              <iframe
-                src={fileAperto.url}
-                style={{ width: `${90 * zoom}%`, height: "85vh", border: "none", backgroundColor: "#fff" }}
-              />
+                        {fileAperto.tipo === "pdf" ? (
+              <VisualizzatorePdf url={fileAperto.url} zoom={zoom} />
             ) : (
               <img
                 src={fileAperto.url}
