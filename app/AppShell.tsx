@@ -75,23 +75,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     pathname?.startsWith("/crea-account") ||
     pathname?.startsWith("/privacy");
 
-  useEffect(() => {
+    useEffect(() => {
     async function carica() {
-      const { data } = await supabase.auth.getUser();
-      setUtente(data?.user ? { email: data.user.email ?? "" } : null);
+      try {
+        const { data } = await supabase.auth.getUser();
+        setUtente(data?.user ? { email: data.user.email ?? "" } : null);
 
-      if (data?.user) {
-        const { data: profilo } = await supabase
-          .from("profili")
-          .select("autorita_controllo, ruolo")
-          .eq("id", data.user.id)
-          .maybeSingle();
-        setAutoritaControllo(!!profilo?.autorita_controllo);
-        setIsAdmin(profilo?.ruolo === "admin");
-      } else if (!paginaPubblica) {
-        // Nessuno loggato e la pagina non è tra quelle pubbliche: manda al login
-        // invece di mostrare la barra strumenti "vuota" senza dati da vedere.
-        router.push("/login");
+        if (data?.user) {
+          const { data: profilo } = await supabase
+            .from("profili")
+            .select("autorita_controllo, ruolo")
+            .eq("id", data.user.id)
+            .maybeSingle();
+          setAutoritaControllo(!!profilo?.autorita_controllo);
+          setIsAdmin(profilo?.ruolo === "admin");
+        } else if (!paginaPubblica && navigator.onLine) {
+          // Nessuno loggato, la pagina non è pubblica, e siamo online: manda al login.
+          // Se invece siamo offline, non forziamo il logout — probabilmente eri già
+          // loggato e il controllo è solo fallito per mancanza di connessione.
+          router.push("/login");
+        }
+      } catch {
+        // Errore di rete (es. offline): non facciamo nulla, lasciamo la pagina
+        // così com'è invece di buttare fuori l'utente.
       }
     }
     carica();
