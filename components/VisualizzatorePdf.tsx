@@ -18,9 +18,9 @@ export default function VisualizzatorePdf({ url, zoom }: { url: string; zoom: nu
       setCaricamento(true);
       setErroreLocale(null);
       try {
-        const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf");
+        const pdfjsLib: any = await import("pdfjs-dist");
         pdfjsLib.GlobalWorkerOptions.workerSrc =
-          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js";
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
 
         const documento = await pdfjsLib.getDocument(url).promise;
         if (annullato || !contenitoreRef.current) return;
