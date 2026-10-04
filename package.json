@@ -13,7 +13,8 @@
     "react-dom": "^18.3.0",
     "@supabase/supabase-js": "^2.45.0",
     "jspdf": "^2.5.2",
-    "resend": "^4.0.0"
+    "resend": "^4.0.0",
+    "pdfjs-dist": "4.0.379"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
