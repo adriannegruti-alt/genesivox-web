@@ -11,6 +11,7 @@ type Documento = {
   nome_file: string | null;
   storage_path: string;
   creato_il: string;
+  data_scadenza: string | null;
 };
 
 export default function DettaglioTipoDocumentoPage() {
@@ -24,6 +25,10 @@ export default function DettaglioTipoDocumentoPage() {
   const [errore, setErrore] = useState<string | null>(null);
   const [uploadInCorso, setUploadInCorso] = useState(false);
   const [esitoAntivirus, setEsitoAntivirus] = useState<string | null>(null);
+  const [dataScadenza, setDataScadenza] = useState("");
+
+  const oggi = new Date().toISOString().slice(0, 10);
+  const dataGiaScaduta = dataScadenza !== "" && dataScadenza < oggi;
 
   async function carica() {
     setErrore(null);
@@ -40,7 +45,7 @@ export default function DettaglioTipoDocumentoPage() {
 
     const { data: docs } = await supabase
       .from("documenti")
-      .select("id, nome_file, storage_path, creato_il")
+      .select("id, nome_file, storage_path, creato_il, data_scadenza")
       .eq("cantiere_id", cantiereId)
       .eq("profilo_id", userData.user.id)
       .eq("tipo_documento", t.nome)
@@ -94,16 +99,40 @@ export default function DettaglioTipoDocumentoPage() {
       return;
     }
 
-    const { error: dbErr } = await supabase.from("documenti").insert({
-      cantiere_id: cantiereId,
-      profilo_id: userData.user.id,
-      tipo_documento: tipo.nome,
-      storage_path: percorso,
-      nome_file: fileDaCaricare.name,
-    });
+    const { data: nuovoDocumento, error: dbErr } = await supabase
+      .from("documenti")
+      .insert({
+        cantiere_id: cantiereId,
+        profilo_id: userData.user.id,
+        tipo_documento: tipo.nome,
+        storage_path: percorso,
+        nome_file: fileDaCaricare.name,
+        data_scadenza: dataScadenza || null,
+      })
+      .select("id")
+      .single();
 
-    if (dbErr) setErrore(dbErr.message);
+    if (dbErr) {
+      setErrore(dbErr.message);
+    } else if (nuovoDocumento) {
+      // Avvisa il server che è stato caricato un documento, così può mandare
+      // le notifiche ai ruoli giusti. Se fallisce, il caricamento resta valido.
+      try {
+        const { data: sessione } = await supabase.auth.getSession();
+        const token = sessione.session?.access_token;
+        if (token) {
+          fetch("/api/notifiche/documento-caricato", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ documentoId: nuovoDocumento.id }),
+          }).catch(() => {});
+        }
+      } catch {
+        // nessun problema: la notifica è un extra, non deve bloccare il caricamento
+      }
+    }
 
+    setDataScadenza("");
     setUploadInCorso(false);
     carica();
   }
@@ -140,6 +169,23 @@ export default function DettaglioTipoDocumentoPage() {
       </p>
       <h1>{tipo.nome}</h1>
 
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 4 }}>
+          Data di scadenza del documento (lascia vuoto se non ne ha una)
+        </label>
+        <input
+          type="date"
+          value={dataScadenza}
+          onChange={(e) => setDataScadenza(e.target.value)}
+          style={{ padding: 8, borderRadius: 6, border: "1px solid #d0d5dd" }}
+        />
+        {dataGiaScaduta && (
+          <p style={{ color: "#b45309", fontSize: 13, margin: "6px 0 0" }}>
+            ⚠ Questa data è già passata: il documento risulterà scaduto e verrà avvisato chi di dovere.
+          </p>
+        )}
+      </div>
+
       <label
         style={{
           display: "inline-block",
@@ -175,6 +221,7 @@ export default function DettaglioTipoDocumentoPage() {
           <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
             <th style={{ padding: 8 }}>File</th>
             <th style={{ padding: 8 }}>Caricato il</th>
+            <th style={{ padding: 8 }}>Scadenza</th>
             <th style={{ padding: 8 }}></th>
           </tr>
         </thead>
@@ -183,6 +230,9 @@ export default function DettaglioTipoDocumentoPage() {
             <tr key={d.id} style={{ borderBottom: "1px solid #eee" }}>
               <td style={{ padding: 8 }}>{d.nome_file}</td>
               <td style={{ padding: 8 }}>{new Date(d.creato_il).toLocaleDateString("it-IT")}</td>
+              <td style={{ padding: 8, color: d.data_scadenza && d.data_scadenza < oggi ? "#c0392b" : "inherit" }}>
+                {d.data_scadenza ? new Date(d.data_scadenza).toLocaleDateString("it-IT") : "—"}
+              </td>
               <td style={{ padding: 8, textAlign: "right" }}>
                 <button onClick={() => apriFile(d.storage_path)} style={{ marginRight: 8, padding: "4px 10px" }}>
                   Apri
