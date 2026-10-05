@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { creaClientSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { inviaEmail } from "@/lib/email";
+import { inviaPush } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
@@ -107,6 +108,7 @@ export async function POST(richiesta: NextRequest) {
   const ruoliPrincipali = scaduto ? RUOLI_SE_SCADUTO : RUOLI_SE_NUOVO;
   const destinatari = new Set<string>();
   const copia = new Set<string>();
+  const idPerPush = new Set<string>();
 
   for (const m of elencoMembri) {
     const profilo = Array.isArray(m.profili) ? m.profili[0] : m.profili;
@@ -119,8 +121,10 @@ export async function POST(richiesta: NextRequest) {
     const ruoli = ruoliDi(m);
     if (ruoli.some((r) => ruoliPrincipali.includes(r))) {
       destinatari.add(email);
+      idPerPush.add(m.profilo_id);
     } else if (scaduto && ruoli.some((r) => RUOLI_COPIA_SE_SCADUTO.includes(r))) {
       copia.add(email);
+      idPerPush.add(m.profilo_id);
     }
   }
   Array.from(destinatari).forEach((e) => copia.delete(e));
@@ -146,7 +150,8 @@ export async function POST(richiesta: NextRequest) {
     profiloProprietario?.email ||
     "";
 
-  const link = `${APP_URL}/cantieri/${doc.cantiere_id}/imprese/${doc.profilo_id}`;
+  const percorso = `/cantieri/${doc.cantiere_id}/imprese/${doc.profilo_id}`;
+  const link = `${APP_URL}${percorso}`;
 
   const oggetto = scaduto
     ? `⚠ Documento caricato già scaduto — ${nomeCantiere}`
@@ -188,5 +193,14 @@ export async function POST(richiesta: NextRequest) {
     return NextResponse.json({ ok: false, errore: esito.errore }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, inviate: destinatari.size + copia.size, scaduto });
+  // 8. Notifica push (non blocca mai: se fallisce, l'email è già partita)
+  const titoloPush = scaduto ? "⚠ Documento caricato già scaduto" : "Nuovo documento caricato";
+  const testoPush = `${doc.tipo_documento || "Documento"} — ${nomeCantiere}`;
+  const pushInviate = await inviaPush(admin, Array.from(idPerPush), {
+    titolo: titoloPush,
+    testo: testoPush,
+    url: percorso,
+  });
+
+  return NextResponse.json({ ok: true, inviate: destinatari.size + copia.size, push: pushInviate, scaduto });
 }
