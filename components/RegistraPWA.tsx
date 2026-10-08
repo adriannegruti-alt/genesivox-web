@@ -42,13 +42,15 @@ function chiaveInBytes(base64: string): Uint8Array {
   return bytes;
 }
 
-// Iscrive questo dispositivo alle notifiche e comunica l'iscrizione al server.
-async function iscriviDispositivo(): Promise<boolean> {
+// Iscrive questo dispositivo alle notifiche e lo collega all'utente loggato.
+// Restituisce l'id dell'utente se tutto è andato bene, altrimenti stringa vuota.
+async function iscriviDispositivo(): Promise<string> {
   try {
-    if (!CHIAVE_PUBBLICA) return false;
+    if (!CHIAVE_PUBBLICA) return "";
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
-    if (!token) return false;
+    const idUtente = data.session?.user?.id || "";
+    if (!token || !idUtente) return "";
 
     const registrazione = await navigator.serviceWorker.ready;
     let sottoscrizione = await registrazione.pushManager.getSubscription();
@@ -64,9 +66,27 @@ async function iscriviDispositivo(): Promise<boolean> {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ sottoscrizione: sottoscrizione.toJSON() }),
     });
-    return risposta.ok;
+    return risposta.ok ? idUtente : "";
   } catch {
-    return false;
+    return "";
+  }
+}
+
+// Scollega questo dispositivo dall'utente che sta uscendo.
+async function scollegaDispositivo() {
+  try {
+    if (!pushSupportato()) return;
+    const registrazione = await navigator.serviceWorker.ready;
+    const sottoscrizione = await registrazione.pushManager.getSubscription();
+    if (!sottoscrizione) return;
+    await fetch("/api/push/iscriviti", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: sottoscrizione.endpoint }),
+      keepalive: true,
+    });
+  } catch {
+    // nessun problema: al prossimo login il dispositivo viene ricollegato
   }
 }
 
@@ -80,7 +100,8 @@ export default function RegistraPWA() {
   const [mostraBanner, setMostraBanner] = useState(false);
   const [occupato, setOccupato] = useState(false);
   const [messaggio, setMessaggio] = useState("");
-  const giaIscritto = useRef(false);
+  // Id dell'utente a cui questo dispositivo è attualmente collegato
+  const utenteCollegato = useRef("");
 
   useEffect(() => {
     registraServiceWorker();
@@ -103,15 +124,17 @@ export default function RegistraPWA() {
       try {
         const { data } = await supabase.auth.getSession();
         if (!attivo) return;
-        if (!data.session) {
+        const idUtente = data.session?.user?.id || "";
+        if (!idUtente) {
           setMostraBanner(false);
           return;
         }
         if (Notification.permission === "granted") {
           setMostraBanner(false);
-          if (!giaIscritto.current) {
-            giaIscritto.current = true;
-            await iscriviDispositivo();
+          if (utenteCollegato.current !== idUtente) {
+            utenteCollegato.current = idUtente;
+            const esito = await iscriviDispositivo();
+            if (!esito) utenteCollegato.current = "";
           }
         } else if (Notification.permission === "default" && !bannerNascosto()) {
           setMostraBanner(true);
@@ -122,7 +145,13 @@ export default function RegistraPWA() {
     }
 
     valuta();
-    const { data: ascolto } = supabase.auth.onAuthStateChange(() => {
+    const { data: ascolto } = supabase.auth.onAuthStateChange((evento) => {
+      if (evento === "SIGNED_OUT") {
+        utenteCollegato.current = "";
+        setMostraBanner(false);
+        scollegaDispositivo();
+        return;
+      }
       valuta();
     });
     return () => {
@@ -137,9 +166,9 @@ export default function RegistraPWA() {
     try {
       const permesso = await Notification.requestPermission();
       if (permesso === "granted") {
-        const ok = await iscriviDispositivo();
-        if (ok) {
-          giaIscritto.current = true;
+        const idUtente = await iscriviDispositivo();
+        if (idUtente) {
+          utenteCollegato.current = idUtente;
           setMostraBanner(false);
         } else {
           setMessaggio("Non è stato possibile attivare le notifiche. Riprova più tardi.");
