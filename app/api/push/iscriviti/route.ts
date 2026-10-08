@@ -3,7 +3,8 @@ import { creaClientSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
-// Salva (o aggiorna) l'iscrizione alle notifiche push di un dispositivo.
+// Salva (o aggiorna) l'iscrizione alle notifiche push di un dispositivo,
+// collegandola all'utente che sta usando l'app in questo momento.
 export async function POST(richiesta: NextRequest) {
   const admin = creaClientSupabaseAdmin();
 
@@ -34,6 +35,29 @@ export async function POST(richiesta: NextRequest) {
   const { error } = await admin
     .from("sottoscrizioni_push")
     .upsert({ profilo_id: utente.id, endpoint, p256dh, auth }, { onConflict: "endpoint" });
+  if (error) return NextResponse.json({ ok: false, errore: error.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true });
+}
+
+// Scollega un dispositivo (chiamato quando l'utente preme "Esci").
+// Non serve il login: l'indirizzo del dispositivo è lungo e non indovinabile,
+// e al peggio il dispositivo smette di ricevere avvisi finché non rientri.
+export async function DELETE(richiesta: NextRequest) {
+  const admin = creaClientSupabaseAdmin();
+
+  let endpoint = "";
+  try {
+    const corpo = await richiesta.json();
+    endpoint = String(corpo.endpoint || "");
+  } catch {
+    // corpo non valido: gestito sotto
+  }
+  if (!endpoint.startsWith("https://")) {
+    return NextResponse.json({ ok: false, errore: "Richiesta non valida" }, { status: 400 });
+  }
+
+  const { error } = await admin.from("sottoscrizioni_push").delete().eq("endpoint", endpoint);
   if (error) return NextResponse.json({ ok: false, errore: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });
