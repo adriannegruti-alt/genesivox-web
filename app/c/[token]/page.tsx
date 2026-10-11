@@ -95,24 +95,41 @@ export default function PaginaPubblicaCantierePage() {
     if (token) carica();
   }, [token]);
 
+  // Ogni scansione: se la persona è dentro (ingresso senza uscita) registra
+  // l'uscita, altrimenti registra un nuovo ingresso. Si può ripetere più
+  // volte nella stessa giornata (es. pausa pranzo).
   async function registraPresenza(idPersona: string) {
     if (!cantiere) return;
     setInCorso(true);
     setErrore(null);
 
-    const oggi = new Date().toISOString().slice(0, 10);
+    // Data di oggi in ora italiana (non UTC)
+    const oggi = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Rome" });
+    const ora = new Date().toLocaleTimeString("it-IT", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Europe/Rome",
+    });
 
-    const { data: esistente } = await supabase
+    // C'è un ingresso ancora aperto (senza uscita) per questa persona oggi?
+    const { data: aperta, error: erroreRicerca } = await supabase
       .from("presenze")
-      .select("id, ora_ingresso, ora_uscita")
+      .select("id")
       .eq("cantiere_id", cantiere.id)
       .eq("profilo_id", idPersona)
       .eq("data", oggi)
+      .is("ora_uscita", null)
+      .order("ora_ingresso", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
-    const ora = new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+    if (erroreRicerca) {
+      setErrore(erroreRicerca.message);
+      setInCorso(false);
+      return;
+    }
 
-    if (!esistente) {
+    if (!aperta) {
       const { error } = await supabase.from("presenze").insert({
         cantiere_id: cantiere.id,
         profilo_id: idPersona,
@@ -122,32 +139,26 @@ export default function PaginaPubblicaCantierePage() {
         registrato_da: idPersona,
       });
       if (error) {
-        setErrore(error.message);
+        if ((error as any).code === "23505") {
+          setErrore("Risulti già dentro il cantiere. Scansiona di nuovo il QR per registrare l'uscita.");
+        } else {
+          setErrore(error.message);
+        }
         setInCorso(false);
         return;
       }
       setMessaggioPresenza(`Ingresso registrato alle ${ora}. Buon lavoro!`);
-    } else if (!esistente.ora_uscita) {
+    } else {
       const { error } = await supabase
         .from("presenze")
         .update({ ora_uscita: new Date().toISOString() })
-        .eq("id", esistente.id);
+        .eq("id", aperta.id);
       if (error) {
         setErrore(error.message);
         setInCorso(false);
         return;
       }
-      setMessaggioPresenza(`Uscita registrata alle ${ora}. A presto!`);
-    } else {
-      const entrata = new Date(esistente.ora_ingresso).toLocaleTimeString("it-IT", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      const uscita = new Date(esistente.ora_uscita).toLocaleTimeString("it-IT", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      setMessaggioPresenza(`Hai già registrato oggi: ingresso ${entrata}, uscita ${uscita}.`);
+      setMessaggioPresenza(`Uscita registrata alle ${ora}. A presto! Quando rientri, scansiona di nuovo il QR.`);
     }
 
     setInCorso(false);
