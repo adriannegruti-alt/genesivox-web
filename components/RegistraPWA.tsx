@@ -42,6 +42,23 @@ function chiaveInBytes(base64: string): Uint8Array {
   return bytes;
 }
 
+// Aspetta una risposta al massimo per un certo tempo, poi rinuncia (restituisce null).
+function conLimiteDiTempo<T>(promessa: Promise<T>, millisecondi: number): Promise<T | null> {
+  return new Promise((risolvi) => {
+    const timer = setTimeout(() => risolvi(null), millisecondi);
+    promessa.then(
+      (valore) => {
+        clearTimeout(timer);
+        risolvi(valore);
+      },
+      () => {
+        clearTimeout(timer);
+        risolvi(null);
+      }
+    );
+  });
+}
+
 // Iscrive questo dispositivo alle notifiche e lo collega all'utente loggato.
 // Restituisce l'id dell'utente se tutto è andato bene, altrimenti stringa vuota.
 async function iscriviDispositivo(): Promise<string> {
@@ -52,7 +69,10 @@ async function iscriviDispositivo(): Promise<string> {
     const idUtente = data.session?.user?.id || "";
     if (!token || !idUtente) return "";
 
-    const registrazione = await navigator.serviceWorker.ready;
+    // Se il service worker non è pronto entro 8 secondi (es. finestra temporanea), rinunciamo.
+    const registrazione = await conLimiteDiTempo(navigator.serviceWorker.ready, 8000);
+    if (!registrazione) return "";
+
     let sottoscrizione = await registrazione.pushManager.getSubscription();
     if (!sottoscrizione) {
       sottoscrizione = await registrazione.pushManager.subscribe({
@@ -76,7 +96,8 @@ async function iscriviDispositivo(): Promise<string> {
 async function scollegaDispositivo() {
   try {
     if (!pushSupportato()) return;
-    const registrazione = await navigator.serviceWorker.ready;
+    const registrazione = await conLimiteDiTempo(navigator.serviceWorker.ready, 3000);
+    if (!registrazione) return;
     const sottoscrizione = await registrazione.pushManager.getSubscription();
     if (!sottoscrizione) return;
     await fetch("/api/push/iscriviti", {
@@ -171,7 +192,9 @@ export default function RegistraPWA() {
           utenteCollegato.current = idUtente;
           setMostraBanner(false);
         } else {
-          setMessaggio("Non è stato possibile attivare le notifiche. Riprova più tardi.");
+          setMessaggio(
+            "Non è stato possibile attivare le notifiche. Apri l'app dal browser Chrome (o dall'icona installata) e riprova."
+          );
         }
       } else {
         setMessaggio("Notifiche non attivate. Puoi riattivarle dalle impostazioni del browser.");
@@ -209,6 +232,7 @@ export default function RegistraPWA() {
         gap: 12,
         alignItems: "center",
         flexWrap: "wrap",
+        fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif",
       }}
     >
       <div style={{ flex: 1, minWidth: 200, fontSize: 14, color: "#3c4149" }}>
@@ -228,6 +252,7 @@ export default function RegistraPWA() {
             padding: "8px 14px",
             fontSize: 14,
             cursor: "pointer",
+            fontFamily: "inherit",
           }}
         >
           {occupato ? "Attivo..." : "Attiva"}
@@ -242,6 +267,7 @@ export default function RegistraPWA() {
             padding: "8px 14px",
             fontSize: 14,
             cursor: "pointer",
+            fontFamily: "inherit",
           }}
         >
           Non ora
