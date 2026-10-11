@@ -143,14 +143,15 @@ export default function PanoramicaCantierePage() {
         </button>
       </div>
 
-      {/* Foglio che viene stampato (invisibile a schermo) */}
+      {/* Foglio che viene stampato (invisibile a schermo).
+          Nessun link scritto: così il telefono vede solo il QR da scansionare. */}
       <div className="solo-stampa">
         {azienda && (
           <div style={{ fontSize: `${7 * t}mm`, fontWeight: 700, marginBottom: `${2 * t}mm` }}>{azienda}</div>
         )}
         <div style={{ fontSize: `${9 * t}mm`, fontWeight: 700, marginBottom: `${2 * t}mm` }}>{cantiere.nome}</div>
         {cantiere.indirizzo && (
-          <div style={{ fontSize: `${5 * t}mm`, marginBottom: `${5 * t}mm` }}>{cantiere.indirizzo}</div>
+          <div style={{ fontSize: `${5 * t}mm`, marginBottom: `${8 * t}mm` }}>{cantiere.indirizzo}</div>
         )}
         <img
           src={urlQrGrande}
@@ -161,14 +162,11 @@ export default function PanoramicaCantierePage() {
             imageRendering: "pixelated",
           }}
         />
-        <div style={{ fontSize: `${6 * t}mm`, fontWeight: 700, marginTop: `${5 * t}mm` }}>
+        <div style={{ fontSize: `${6 * t}mm`, fontWeight: 700, marginTop: `${8 * t}mm` }}>
           Inquadra il QR per accedere al cantiere
         </div>
         <div style={{ fontSize: `${4 * t}mm`, marginTop: `${2 * t}mm` }}>
           Registrati o accedi con il tuo smartphone
-        </div>
-        <div style={{ fontSize: `${3 * t}mm`, marginTop: `${6 * t}mm`, color: "#444", wordBreak: "break-all" }}>
-          {linkPubblico}
         </div>
       </div>
     </div>
