@@ -22,12 +22,24 @@ type Presenza = {
 };
 
 function oggiISO() {
-  return new Date().toISOString().slice(0, 10);
+  // Data di oggi in ora italiana (non UTC)
+  return new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Rome" });
 }
 
 function formattaOra(iso: string | null) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Rome",
+  });
+}
+
+function formattaDurata(ms: number) {
+  const minutiTotali = Math.max(0, Math.round(ms / 60000));
+  const ore = Math.floor(minutiTotali / 60);
+  const minuti = minutiTotali % 60;
+  return ore > 0 ? `${ore}h ${minuti}min` : `${minuti}min`;
 }
 
 export default function PresenzePage() {
@@ -81,17 +93,29 @@ export default function PresenzePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cantiereId, data]);
 
-  async function segnaPresente(profiloId: string) {
+  // Registra un ingresso (se la persona è fuori) o l'uscita (se è dentro)
+  async function registraIngressoOUscita(profiloId: string) {
     setErrore(null);
-    const { data: esistente } = await supabase
+
+    // C'è un ingresso ancora aperto (senza uscita) per questa persona oggi?
+    const { data: aperta, error: erroreRicerca } = await supabase
       .from("presenze")
-      .select("id, ora_uscita")
+      .select("id")
       .eq("cantiere_id", cantiereId)
       .eq("profilo_id", profiloId)
       .eq("data", data)
+      .is("ora_uscita", null)
+      .order("ora_ingresso", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
-    if (!esistente) {
+    if (erroreRicerca) {
+      alert(`Non è stato possibile controllare la presenza: ${erroreRicerca.message}`);
+      return;
+    }
+
+    if (!aperta) {
+      // Nuovo ingresso (anche se ce ne sono già di chiusi nella giornata)
       const { error } = await supabase.from("presenze").insert({
         cantiere_id: cantiereId,
         profilo_id: profiloId,
@@ -101,21 +125,22 @@ export default function PresenzePage() {
         registrato_da: profiloId,
       });
       if (error) {
-        alert(`Non è stato possibile registrare la presenza: ${error.message}`);
+        if ((error as any).code === "23505") {
+          alert("Questa persona risulta già dentro il cantiere. Registra prima l'uscita.");
+        } else {
+          alert(`Non è stato possibile registrare l'ingresso: ${error.message}`);
+        }
         return;
       }
-    } else if (!esistente.ora_uscita) {
+    } else {
       const { error } = await supabase
         .from("presenze")
         .update({ ora_uscita: new Date().toISOString() })
-        .eq("id", esistente.id);
+        .eq("id", aperta.id);
       if (error) {
         alert(`Non è stato possibile registrare l'uscita: ${error.message}`);
         return;
       }
-    } else {
-      alert("Questa persona ha già ingresso e uscita registrati per oggi.");
-      return;
     }
 
     setMembroDaAggiungere("");
@@ -143,10 +168,29 @@ export default function PresenzePage() {
   if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
 
   const eOggi = data === oggiISO();
-  const membriSenzaPresenzaOggi = membri.filter((m) => !presenze.some((p) => p.profilo_id === m.profilo_id));
+
+  // Chi è dentro adesso (ha un ingresso senza uscita)
+  const dentro = new Set(presenze.filter((p) => !p.ora_uscita).map((p) => p.profilo_id));
+  const selezionatoDentro = dentro.has(membroDaAggiungere);
+
+  // Totali per persona (somma dei giri chiusi)
+  const totali: { profiloId: string; giri: number; ms: number; inCorso: boolean }[] = [];
+  for (const p of presenze) {
+    let riga = totali.find((t) => t.profiloId === p.profilo_id);
+    if (!riga) {
+      riga = { profiloId: p.profilo_id, giri: 0, ms: 0, inCorso: false };
+      totali.push(riga);
+    }
+    riga.giri += 1;
+    if (p.ora_uscita) {
+      riga.ms += new Date(p.ora_uscita).getTime() - new Date(p.ora_ingresso).getTime();
+    } else {
+      riga.inCorso = true;
+    }
+  }
 
   return (
-    <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 800 }}>
+    <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 900 }}>
       <h1>Presenze — {cantiere?.nome}</h1>
 
       <div style={{ marginBottom: 20 }}>
@@ -161,45 +205,70 @@ export default function PresenzePage() {
 
       {errore && <p style={{ color: "red" }}>{errore}</p>}
 
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 24 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16 }}>
         <thead>
           <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
             <th style={{ padding: 8 }}>Persona</th>
             <th style={{ padding: 8 }}>Impresa</th>
             <th style={{ padding: 8 }}>Ruolo</th>
+            <th style={{ padding: 8 }}>N.</th>
             <th style={{ padding: 8 }}>Ingresso</th>
             <th style={{ padding: 8 }}>Uscita</th>
+            <th style={{ padding: 8 }}>Durata</th>
             <th style={{ padding: 8 }}>Metodo</th>
           </tr>
         </thead>
         <tbody>
-          {presenze.map((p) => (
-            <tr key={p.id} style={{ borderBottom: "1px solid #eee" }}>
-              <td style={{ padding: 8 }}>{nomeVisualizzato(p.profilo_id)}</td>
-              <td style={{ padding: 8 }}>{impresaVisualizzata(p.profilo_id)}</td>
-              <td style={{ padding: 8 }}>{ruoloVisualizzato(p.profilo_id)}</td>
-              <td style={{ padding: 8, color: "#16a34a", fontWeight: 600 }}>{formattaOra(p.ora_ingresso)}</td>
-              <td style={{ padding: 8 }}>
-                {p.ora_uscita ? (
-                  formattaOra(p.ora_uscita)
-                ) : (
-                  <span style={{ color: "#c0392b" }}>Ancora in cantiere</span>
-                )}
-              </td>
-              <td style={{ padding: 8, color: "#888", fontSize: 13 }}>
-                {p.metodo === "qr" ? "QR code" : p.metodo === "manuale" ? "Manuale" : p.metodo}
-              </td>
-            </tr>
-          ))}
+          {presenze.map((p, i) => {
+            const numeroGiro = presenze.slice(0, i + 1).filter((x) => x.profilo_id === p.profilo_id).length;
+            return (
+              <tr key={p.id} style={{ borderBottom: "1px solid #eee" }}>
+                <td style={{ padding: 8 }}>{nomeVisualizzato(p.profilo_id)}</td>
+                <td style={{ padding: 8 }}>{impresaVisualizzata(p.profilo_id)}</td>
+                <td style={{ padding: 8 }}>{ruoloVisualizzato(p.profilo_id)}</td>
+                <td style={{ padding: 8, color: "#888" }}>{numeroGiro}</td>
+                <td style={{ padding: 8, color: "#16a34a", fontWeight: 600 }}>{formattaOra(p.ora_ingresso)}</td>
+                <td style={{ padding: 8 }}>
+                  {p.ora_uscita ? (
+                    formattaOra(p.ora_uscita)
+                  ) : (
+                    <span style={{ color: "#c0392b" }}>Ancora in cantiere</span>
+                  )}
+                </td>
+                <td style={{ padding: 8 }}>
+                  {p.ora_uscita
+                    ? formattaDurata(new Date(p.ora_uscita).getTime() - new Date(p.ora_ingresso).getTime())
+                    : "—"}
+                </td>
+                <td style={{ padding: 8, color: "#888", fontSize: 13 }}>
+                  {p.metodo === "qr" ? "QR code" : p.metodo === "manuale" ? "Manuale" : p.metodo}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       {presenze.length === 0 && <p>Nessuna presenza registrata per questo giorno.</p>}
 
+      {totali.length > 0 && (
+        <div style={{ marginBottom: 24, padding: 12, border: "1px solid #eee", borderRadius: 8 }}>
+          <h3 style={{ marginTop: 0 }}>Totale del giorno per persona</h3>
+          {totali.map((t) => (
+            <p key={t.profiloId} style={{ margin: "4px 0", fontSize: 14 }}>
+              <strong>{nomeVisualizzato(t.profiloId)}</strong>: {t.giri} {t.giri === 1 ? "ingresso" : "ingressi"},{" "}
+              {formattaDurata(t.ms)}
+              {t.inCorso && <span style={{ color: "#c0392b" }}> (+ giro in corso)</span>}
+            </p>
+          ))}
+        </div>
+      )}
+
       {eOggi && (
         <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16, backgroundColor: "#fafafa" }}>
-          <h3 style={{ marginTop: 0 }}>Registra presenza manualmente</h3>
+          <h3 style={{ marginTop: 0 }}>Registra ingresso o uscita manualmente</h3>
           <p style={{ fontSize: 13, color: "#666" }}>
-            Per chi è entrato in cantiere senza scansionare il QR code.
+            Per chi non scansiona il QR code. Si possono registrare più ingressi e uscite nella stessa giornata
+            (per esempio pausa pranzo).
           </p>
           <div style={{ display: "flex", gap: 8 }}>
             <select
@@ -208,30 +277,29 @@ export default function PresenzePage() {
               style={{ flex: 1, padding: 8 }}
             >
               <option value="">Seleziona persona...</option>
-              {membriSenzaPresenzaOggi.map((m) => (
+              {membri.map((m) => (
                 <option key={m.profilo_id} value={m.profilo_id}>
                   {[m.nome, m.cognome].filter(Boolean).join(" ") || m.nome_impresa || m.email} ({m.ruolo})
+                  {dentro.has(m.profilo_id) ? " — in cantiere" : ""}
                 </option>
               ))}
             </select>
             <button
-              onClick={() => membroDaAggiungere && segnaPresente(membroDaAggiungere)}
+              onClick={() => membroDaAggiungere && registraIngressoOUscita(membroDaAggiungere)}
               disabled={!membroDaAggiungere}
               style={{
                 padding: "8px 20px",
-                backgroundColor: "#16a34a",
+                backgroundColor: selezionatoDentro ? "#c0392b" : "#16a34a",
                 color: "#fff",
                 border: "none",
                 borderRadius: 6,
-                cursor: "pointer",
+                cursor: membroDaAggiungere ? "pointer" : "not-allowed",
+                opacity: membroDaAggiungere ? 1 : 0.6,
               }}
             >
-              Segna presente
+              {selezionatoDentro ? "Registra uscita" : "Registra ingresso"}
             </button>
           </div>
-          {membriSenzaPresenzaOggi.length === 0 && (
-            <p style={{ fontSize: 13, color: "#888", marginTop: 8 }}>Tutti i membri hanno già una presenza registrata oggi.</p>
-          )}
         </div>
       )}
     </div>
