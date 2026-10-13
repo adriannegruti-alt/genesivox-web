@@ -17,6 +17,10 @@ type Lavoratore = {
   foto_path: string | null;
   qr_token: string;
   attivo: boolean;
+  tipo_rapporto: string;
+  committente: string | null;
+  in_subappalto: boolean;
+  autorizzazione_subappalto: string | null;
 };
 
 // Ritaglia la foto in formato tessera (4:5) e la rimpicciolisce: pesa poco e
@@ -73,6 +77,7 @@ export default function TesserinoPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [lavoratore, setLavoratore] = useState<Lavoratore | null>(null);
   const [impresa, setImpresa] = useState("");
+  const [partitaIva, setPartitaIva] = useState("");
   const [fotoUrl, setFotoUrl] = useState<string | null>(null);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [caricamento, setCaricamento] = useState(true);
@@ -90,7 +95,9 @@ export default function TesserinoPage() {
 
     const { data: l, error } = await supabase
       .from("lavoratori")
-      .select("id, nome, cognome, mansione, data_assunzione, foto_path, qr_token, attivo")
+      .select(
+        "id, nome, cognome, mansione, data_assunzione, foto_path, qr_token, attivo, tipo_rapporto, committente, in_subappalto, autorizzazione_subappalto"
+      )
       .eq("id", lavoratoreId)
       .maybeSingle();
 
@@ -103,10 +110,11 @@ export default function TesserinoPage() {
 
     const { data: profilo } = await supabase
       .from("profili")
-      .select("impresa, nome_utente")
+      .select("impresa, nome_utente, partita_iva")
       .eq("id", u.user.id)
       .maybeSingle();
     setImpresa(profilo?.impresa || profilo?.nome_utente || "");
+    setPartitaIva(profilo?.partita_iva || "");
 
     // QR: contiene solo il codice casuale del tesserino, nessun dato personale
     const qr = await QRCode.toDataURL(`${SITO}/t/${l.qr_token}`, {
@@ -162,6 +170,16 @@ export default function TesserinoPage() {
   if (!userId) return <p style={{ padding: 24 }}>Devi accedere per vedere il tesserino.</p>;
   if (!lavoratore) return <p style={{ padding: 24, color: "red" }}>{errore ?? "Lavoratore non trovato."}</p>;
 
+  const autonomo = lavoratore.tipo_rapporto === "autonomo";
+  const codiceTesserino = lavoratore.qr_token.slice(0, 8).toUpperCase().replace(/(.{4})(.{4})/, "$1-$2");
+  const mancano: string[] = [];
+  if (!fotoUrl) mancano.push("la foto");
+  if (!impresa) mancano.push("la ragione sociale dell'impresa");
+  if (!partitaIva) mancano.push("la partita IVA dell'impresa");
+  if (!autonomo && !lavoratore.data_assunzione) mancano.push("la data di assunzione");
+  if (autonomo && !lavoratore.committente) mancano.push("il committente");
+  if (lavoratore.in_subappalto && !lavoratore.autorizzazione_subappalto) mancano.push("gli estremi del subappalto");
+
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 700 }}>
       <style>{`
@@ -190,6 +208,24 @@ export default function TesserinoPage() {
 
       {!lavoratore.attivo && (
         <p style={{ color: "#c0392b" }}>Questo lavoratore è disattivato: riattivalo prima di stampare il tesserino.</p>
+      )}
+
+      {mancano.length > 0 && (
+        <p
+          style={{
+            backgroundColor: "#fff8e6",
+            border: "1px solid #f0d9a0",
+            borderRadius: 6,
+            padding: 10,
+            fontSize: 14,
+          }}
+        >
+          Per un tesserino completo mancano: {mancano.join(", ")}. Si inseriscono nella pagina{" "}
+          <Link href="/lavoratori" style={{ color: "#1a73e8" }}>
+            Lavoratori
+          </Link>
+          .
+        </p>
       )}
 
       <div style={{ marginBottom: 16 }}>
@@ -262,20 +298,48 @@ export default function TesserinoPage() {
             )}
           </div>
 
-          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "0.8mm" }}>
-            <div style={{ fontSize: "4.2mm", fontWeight: 700, textTransform: "uppercase", lineHeight: 1.1 }}>
+          <div
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.5mm",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ fontSize: "4mm", fontWeight: 700, textTransform: "uppercase", lineHeight: 1.1 }}>
               {lavoratore.cognome}
             </div>
-            <div style={{ fontSize: "3.6mm", lineHeight: 1.1 }}>{lavoratore.nome}</div>
+            <div style={{ fontSize: "3.4mm", lineHeight: 1.1 }}>{lavoratore.nome}</div>
             {lavoratore.mansione && (
-              <div style={{ fontSize: "3mm", color: "#333", lineHeight: 1.1 }}>{lavoratore.mansione}</div>
+              <div style={{ fontSize: "2.8mm", color: "#333", lineHeight: 1.1 }}>{lavoratore.mansione}</div>
             )}
-            <div style={{ marginTop: "1.5mm", fontSize: "2.2mm", color: "#666" }}>Datore di lavoro</div>
-            <div style={{ fontSize: "3mm", fontWeight: 700, lineHeight: 1.1 }}>{impresa || "—"}</div>
-            {lavoratore.data_assunzione && (
-              <div style={{ fontSize: "2.6mm", color: "#333" }}>
-                Assunto il {new Date(lavoratore.data_assunzione).toLocaleDateString("it-IT")}
-              </div>
+
+            {autonomo ? (
+              <>
+                <div style={{ marginTop: "1mm", fontSize: "2.6mm", fontWeight: 700 }}>Lavoratore autonomo</div>
+                {impresa && <div style={{ fontSize: "2.3mm", lineHeight: 1.1 }}>{impresa}</div>}
+                {partitaIva && <div style={{ fontSize: "2.2mm" }}>P.IVA {partitaIva}</div>}
+                <div style={{ fontSize: "2.2mm", lineHeight: 1.1 }}>Committente: {lavoratore.committente || "—"}</div>
+              </>
+            ) : (
+              <>
+                <div style={{ marginTop: "1mm", fontSize: "2.8mm", fontWeight: 700, lineHeight: 1.1 }}>
+                  {impresa || "—"}
+                </div>
+                {partitaIva && <div style={{ fontSize: "2.2mm" }}>P.IVA {partitaIva}</div>}
+                {lavoratore.data_assunzione && (
+                  <div style={{ fontSize: "2.3mm" }}>
+                    Assunto il {new Date(lavoratore.data_assunzione).toLocaleDateString("it-IT")}
+                  </div>
+                )}
+                {lavoratore.in_subappalto && (
+                  <div style={{ fontSize: "2mm", lineHeight: 1.1 }}>
+                    Subappalto – aut.: {lavoratore.autorizzazione_subappalto || "—"}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -290,7 +354,7 @@ export default function TesserinoPage() {
             }}
           >
             {qrUrl && <img src={qrUrl} alt="QR" style={{ width: "20mm", height: "20mm" }} />}
-            <div style={{ fontSize: "2mm", color: "#666" }}>Scansiona per verificare</div>
+            <div style={{ fontSize: "2mm", color: "#444", fontFamily: "monospace" }}>{codiceTesserino}</div>
           </div>
         </div>
       </div>
