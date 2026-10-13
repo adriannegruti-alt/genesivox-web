@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
 type Lavoratore = {
@@ -28,6 +29,18 @@ const stileCampo: React.CSSProperties = {
   border: "1px solid #ccc",
   borderRadius: 6,
   fontSize: 14,
+};
+
+const stilePulsante: React.CSSProperties = {
+  padding: "4px 10px",
+  borderRadius: 6,
+  border: "1px solid #ccc",
+  backgroundColor: "#fff",
+  cursor: "pointer",
+  fontSize: 13,
+  color: "#000",
+  textDecoration: "none",
+  display: "inline-block",
 };
 
 export default function LavoratoriPage() {
@@ -259,7 +272,9 @@ export default function LavoratoriPage() {
       </form>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 12 }}>
-        <strong>{numeroAttivi} {numeroAttivi === 1 ? "lavoratore attivo" : "lavoratori attivi"}</strong>
+        <strong>
+          {numeroAttivi} {numeroAttivi === 1 ? "lavoratore attivo" : "lavoratori attivi"}
+        </strong>
         <input
           placeholder="Cerca per nome, cognome, mansione..."
           value={cerca}
@@ -301,16 +316,13 @@ export default function LavoratoriPage() {
                   {l.data_assunzione ? new Date(l.data_assunzione).toLocaleDateString("it-IT") : "—"}
                 </td>
                 <td style={{ padding: 8, whiteSpace: "nowrap" }}>
-                  <button
-                    onClick={() => modifica(l)}
-                    style={{ marginRight: 6, padding: "4px 10px", borderRadius: 6, border: "1px solid #ccc", backgroundColor: "#fff", cursor: "pointer" }}
-                  >
+                  <Link href={`/lavoratori/${l.id}`} style={{ ...stilePulsante, marginRight: 6 }}>
+                    Tesserino
+                  </Link>
+                  <button onClick={() => modifica(l)} style={{ ...stilePulsante, marginRight: 6 }}>
                     Modifica
                   </button>
-                  <button
-                    onClick={() => cambiaStato(l)}
-                    style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #ccc", backgroundColor: "#fff", cursor: "pointer" }}
-                  >
+                  <button onClick={() => cambiaStato(l)} style={stilePulsante}>
                     {l.attivo ? "Disattiva" : "Riattiva"}
                   </button>
                 </td>
