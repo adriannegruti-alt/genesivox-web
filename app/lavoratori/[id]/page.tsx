@@ -180,6 +180,18 @@ export default function TesserinoPage() {
   if (autonomo && !lavoratore.committente) mancano.push("il committente");
   if (lavoratore.in_subappalto && !lavoratore.autorizzazione_subappalto) mancano.push("gli estremi del subappalto");
 
+  // Se il nome dell'impresa è molto lungo, rimpicciolisce un po' il carattere
+  const caratteriImpresa = (impresa || "—").length;
+  const corpoImpresa = caratteriImpresa > 40 ? "2.4mm" : "2.8mm";
+
+  const stileRigaPiccola: React.CSSProperties = {
+    fontSize: "2.3mm",
+    lineHeight: 1.15,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  };
+
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 700 }}>
       <style>{`
@@ -260,6 +272,7 @@ export default function TesserinoPage() {
           boxSizing: "border-box",
         }}
       >
+        {/* Intestazione */}
         <div
           style={{
             height: "8mm",
@@ -276,11 +289,21 @@ export default function TesserinoPage() {
           <span style={{ fontSize: "2.6mm", fontWeight: 700 }}>GENESIVOX</span>
         </div>
 
-        <div style={{ flex: 1, display: "flex", gap: "2.5mm", padding: "2.5mm", minHeight: 0 }}>
+        {/* Parte alta: foto, dati del lavoratore, QR */}
+        <div
+          style={{
+            display: "flex",
+            gap: "2.5mm",
+            padding: "2mm 2.5mm 0 2.5mm",
+            height: "29mm",
+            boxSizing: "border-box",
+            flexShrink: 0,
+          }}
+        >
           <div
             style={{
-              width: "24mm",
-              height: "30mm",
+              width: "21.6mm",
+              height: "27mm",
               flexShrink: 0,
               backgroundColor: "#eee",
               display: "flex",
@@ -304,7 +327,7 @@ export default function TesserinoPage() {
               minWidth: 0,
               display: "flex",
               flexDirection: "column",
-              gap: "0.5mm",
+              gap: "0.6mm",
               overflow: "hidden",
             }}
           >
@@ -315,31 +338,14 @@ export default function TesserinoPage() {
             {lavoratore.mansione && (
               <div style={{ fontSize: "2.8mm", color: "#333", lineHeight: 1.1 }}>{lavoratore.mansione}</div>
             )}
-
             {autonomo ? (
-              <>
-                <div style={{ marginTop: "1mm", fontSize: "2.6mm", fontWeight: 700 }}>Lavoratore autonomo</div>
-                {impresa && <div style={{ fontSize: "2.3mm", lineHeight: 1.1 }}>{impresa}</div>}
-                {partitaIva && <div style={{ fontSize: "2.2mm" }}>P.IVA {partitaIva}</div>}
-                <div style={{ fontSize: "2.2mm", lineHeight: 1.1 }}>Committente: {lavoratore.committente || "—"}</div>
-              </>
+              <div style={{ marginTop: "0.8mm", fontSize: "2.6mm", fontWeight: 700 }}>Lavoratore autonomo</div>
             ) : (
-              <>
-                <div style={{ marginTop: "1mm", fontSize: "2.8mm", fontWeight: 700, lineHeight: 1.1 }}>
-                  {impresa || "—"}
+              lavoratore.data_assunzione && (
+                <div style={{ marginTop: "0.8mm", fontSize: "2.4mm" }}>
+                  Assunto il {new Date(lavoratore.data_assunzione).toLocaleDateString("it-IT")}
                 </div>
-                {partitaIva && <div style={{ fontSize: "2.2mm" }}>P.IVA {partitaIva}</div>}
-                {lavoratore.data_assunzione && (
-                  <div style={{ fontSize: "2.3mm" }}>
-                    Assunto il {new Date(lavoratore.data_assunzione).toLocaleDateString("it-IT")}
-                  </div>
-                )}
-                {lavoratore.in_subappalto && (
-                  <div style={{ fontSize: "2mm", lineHeight: 1.1 }}>
-                    Subappalto – aut.: {lavoratore.autorizzazione_subappalto || "—"}
-                  </div>
-                )}
-              </>
+              )
             )}
           </div>
 
@@ -356,6 +362,38 @@ export default function TesserinoPage() {
             {qrUrl && <img src={qrUrl} alt="QR" style={{ width: "20mm", height: "20mm" }} />}
             <div style={{ fontSize: "2mm", color: "#444", fontFamily: "monospace" }}>{codiceTesserino}</div>
           </div>
+        </div>
+
+        {/* Parte bassa, a tutta larghezza: datore di lavoro */}
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            padding: "1.2mm 2.5mm 1mm 2.5mm",
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.4mm",
+          }}
+        >
+          <div
+            style={{
+              fontSize: corpoImpresa,
+              fontWeight: 700,
+              lineHeight: 1.1,
+              display: "-webkit-box",
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {impresa || "—"}
+          </div>
+          {partitaIva && <div style={stileRigaPiccola}>P.IVA {partitaIva}</div>}
+          {autonomo && <div style={stileRigaPiccola}>Committente: {lavoratore.committente || "—"}</div>}
+          {!autonomo && lavoratore.in_subappalto && (
+            <div style={stileRigaPiccola}>Subappalto – aut.: {lavoratore.autorizzazione_subappalto || "—"}</div>
+          )}
         </div>
       </div>
 
