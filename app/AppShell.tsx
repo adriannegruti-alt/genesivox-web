@@ -217,6 +217,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           >
             Archivio
           </button>
+          {!autoritaControllo && (
+            <Link
+              href="/lavoratori"
+              onClick={() => setMenuAperto(null)}
+              style={stileLinkMenu(!!pathname?.startsWith("/lavoratori"))}
+            >
+              Lavoratori
+            </Link>
+          )}
           {autoritaControllo && (
             <Link
               href="/ispettiva"
