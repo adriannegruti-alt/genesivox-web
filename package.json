@@ -15,12 +15,14 @@
     "jspdf": "^2.5.2",
     "resend": "^4.0.0",
     "pdfjs-dist": "4.0.379",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
     "@types/react": "^18.3.0",
     "@types/node": "^20.0.0",
-    "@types/web-push": "^3.6.3"
+    "@types/web-push": "^3.6.3",
+    "@types/qrcode": "^1.5.5"
   }
 }
