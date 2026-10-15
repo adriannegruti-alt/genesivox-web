@@ -124,6 +124,7 @@ export default function DocumentiLavoratorePage() {
   const [file, setFile] = useState<File | null>(null);
   const [chiaveFile, setChiaveFile] = useState(0);
   const [salvataggio, setSalvataggio] = useState(false);
+  const [inModifica, setInModifica] = useState<Documento | null>(null);
 
   async function carica() {
     const { data: u } = await supabase.auth.getUser();
@@ -184,6 +185,33 @@ export default function DocumentiLavoratorePage() {
     });
   }
 
+  function iniziaModifica(doc: Documento) {
+    setErrore(null);
+    setMessaggio(null);
+    setInModifica(doc);
+    setForm({
+      categoria: doc.categoria,
+      tipo: doc.tipo,
+      data_rilascio: doc.data_rilascio ?? "",
+      data_scadenza: doc.data_scadenza ?? "",
+      ente_emittente: doc.ente_emittente ?? "",
+      esito: doc.esito ?? "idoneo",
+    });
+    setFile(null);
+    setChiaveFile((k) => k + 1);
+    setTimeout(() => {
+      document.getElementById("modulo-documento")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  }
+
+  function annullaModifica() {
+    setInModifica(null);
+    setForm(FORM_VUOTO);
+    setFile(null);
+    setChiaveFile((k) => k + 1);
+    setErrore(null);
+  }
+
   async function salva(e: React.FormEvent) {
     e.preventDefault();
     setErrore(null);
@@ -195,11 +223,11 @@ export default function DocumentiLavoratorePage() {
       setErrore("Indica il tipo di documento.");
       return;
     }
-    if (!file) {
+    if (!inModifica && !file) {
       setErrore("Carica il file del documento (PDF o foto).");
       return;
     }
-    if (file.size > MAX_BYTE) {
+    if (file && file.size > MAX_BYTE) {
       setErrore("Il file è troppo grande: massimo 10 MB.");
       return;
     }
@@ -208,43 +236,72 @@ export default function DocumentiLavoratorePage() {
       return;
     }
 
-    const estensione = (file.name.split(".").pop() || "pdf").toLowerCase().replace(/[^a-z0-9]/g, "");
-    const percorso = `${userId}/${lavoratoreId}/${crypto.randomUUID()}.${estensione}`;
-
     setSalvataggio(true);
-    const { error: erroreUpload } = await supabase.storage
-      .from("documenti-lavoratori")
-      .upload(percorso, file, { contentType: file.type || undefined });
-    if (erroreUpload) {
-      setSalvataggio(false);
-      setErrore(erroreUpload.message);
-      return;
+
+    // Se c'è un file nuovo lo carico per primo
+    let nuovoPercorso: string | null = null;
+    if (file) {
+      const estensione = (file.name.split(".").pop() || "pdf").toLowerCase().replace(/[^a-z0-9]/g, "");
+      nuovoPercorso = `${userId}/${lavoratoreId}/${crypto.randomUUID()}.${estensione}`;
+      const { error: erroreUpload } = await supabase.storage
+        .from("documenti-lavoratori")
+        .upload(nuovoPercorso, file, { contentType: file.type || undefined });
+      if (erroreUpload) {
+        setSalvataggio(false);
+        setErrore(erroreUpload.message);
+        return;
+      }
     }
 
-    const { error: erroreInserimento } = await supabase.from("documenti_lavoratore").insert({
-      lavoratore_id: lavoratoreId,
-      impresa_id: userId,
-      categoria: form.categoria,
+    const dati = {
       tipo,
       data_rilascio: form.data_rilascio || null,
       data_scadenza: form.data_scadenza || null,
       ente_emittente: form.ente_emittente.trim() || null,
       esito: form.categoria === "idoneita_sanitaria" ? form.esito : null,
-      file_path: percorso,
-      origine: "manuale",
-      stato_verifica: "confermato",
-    });
+    };
+
+    let erroreDb: { message: string } | null = null;
+
+    if (inModifica) {
+      const aggiornamento: Record<string, unknown> = { ...dati };
+      if (nuovoPercorso) aggiornamento.file_path = nuovoPercorso;
+      const { error } = await supabase.from("documenti_lavoratore").update(aggiornamento).eq("id", inModifica.id);
+      erroreDb = error;
+      // Salvato bene: tolgo il file vecchio che è stato sostituito
+      if (!error && nuovoPercorso && inModifica.file_path) {
+        await supabase.storage.from("documenti-lavoratori").remove([inModifica.file_path]);
+      }
+    } else {
+      const { error } = await supabase.from("documenti_lavoratore").insert({
+        ...dati,
+        lavoratore_id: lavoratoreId,
+        impresa_id: userId,
+        categoria: form.categoria,
+        file_path: nuovoPercorso,
+        origine: "manuale",
+        stato_verifica: "confermato",
+      });
+      erroreDb = error;
+    }
+
     setSalvataggio(false);
 
-    if (erroreInserimento) {
-      // se il salvataggio dei dati fallisce, togliamo il file appena caricato
-      await supabase.storage.from("documenti-lavoratori").remove([percorso]);
-      setErrore(erroreInserimento.message);
+    if (erroreDb) {
+      // se il salvataggio dei dati fallisce, tolgo il file appena caricato
+      if (nuovoPercorso) await supabase.storage.from("documenti-lavoratori").remove([nuovoPercorso]);
+      setErrore(erroreDb.message);
       return;
     }
 
-    setMessaggio("Documento aggiunto.");
-    setForm({ ...FORM_VUOTO, categoria: form.categoria, tipo: form.categoria === "idoneita_sanitaria" ? form.tipo : "" });
+    setMessaggio(inModifica ? "Documento aggiornato." : "Documento aggiunto.");
+    const categoriaCorrente = form.categoria;
+    setInModifica(null);
+    setForm({
+      ...FORM_VUOTO,
+      categoria: categoriaCorrente,
+      tipo: categoriaCorrente === "idoneita_sanitaria" ? "Idoneità alla mansione specifica" : "",
+    });
     setFile(null);
     setChiaveFile((k) => k + 1);
     carica();
@@ -263,6 +320,7 @@ export default function DocumentiLavoratorePage() {
     if (doc.file_path) {
       await supabase.storage.from("documenti-lavoratori").remove([doc.file_path]);
     }
+    if (inModifica?.id === doc.id) annullaModifica();
     carica();
   }
 
@@ -299,7 +357,13 @@ export default function DocumentiLavoratorePage() {
               const s = stato(d);
               const link = d.file_path ? linkFile[d.file_path] : undefined;
               return (
-                <tr key={d.id} style={{ borderBottom: "1px solid #eee" }}>
+                <tr
+                  key={d.id}
+                  style={{
+                    borderBottom: "1px solid #eee",
+                    backgroundColor: inModifica?.id === d.id ? "#fff8e6" : undefined,
+                  }}
+                >
                   <td style={{ padding: 8 }}>
                     <strong>{d.tipo}</strong>
                     {d.esito && (
@@ -335,6 +399,9 @@ export default function DocumentiLavoratorePage() {
                         Apri file
                       </a>
                     )}
+                    <button onClick={() => iniziaModifica(d)} style={{ ...stilePulsante, marginRight: 6 }}>
+                      Modifica
+                    </button>
                     <button onClick={() => elimina(d)} style={stilePulsante}>
                       Elimina
                     </button>
@@ -395,15 +462,27 @@ export default function DocumentiLavoratorePage() {
       <Tabella elenco={formazione} />
 
       <form
+        id="modulo-documento"
         onSubmit={salva}
-        style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16, backgroundColor: "#fafafa", marginTop: 8 }}
+        style={{
+          border: "1px solid #ddd",
+          borderRadius: 8,
+          padding: 16,
+          backgroundColor: inModifica ? "#fff8e6" : "#fafafa",
+          marginTop: 8,
+        }}
       >
-        <h3 style={{ marginTop: 0 }}>Aggiungi un documento</h3>
+        <h3 style={{ marginTop: 0 }}>{inModifica ? "Modifica documento" : "Aggiungi un documento"}</h3>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
           <div>
             <label style={stileEtichetta}>Categoria *</label>
-            <select value={form.categoria} onChange={(e) => aggiorna("categoria", e.target.value)} style={stileCampo}>
+            <select
+              value={form.categoria}
+              onChange={(e) => aggiorna("categoria", e.target.value)}
+              disabled={!!inModifica}
+              style={stileCampo}
+            >
               <option value="formazione">Formazione / attestato</option>
               <option value="idoneita_sanitaria">Idoneità sanitaria</option>
             </select>
@@ -461,7 +540,9 @@ export default function DocumentiLavoratorePage() {
             />
           </div>
           <div>
-            <label style={stileEtichetta}>{isIdoneita ? "Medico competente / struttura" : "Ente che ha rilasciato il corso"}</label>
+            <label style={stileEtichetta}>
+              {isIdoneita ? "Medico competente / struttura" : "Ente che ha rilasciato il corso"}
+            </label>
             <input
               value={form.ente_emittente}
               onChange={(e) => aggiorna("ente_emittente", e.target.value)}
@@ -471,7 +552,11 @@ export default function DocumentiLavoratorePage() {
         </div>
 
         <div style={{ marginTop: 12 }}>
-          <label style={stileEtichetta}>File del documento (PDF o foto, massimo 10 MB) *</label>
+          <label style={stileEtichetta}>
+            {inModifica
+              ? "Nuovo file (lascia vuoto per tenere quello attuale) – PDF o foto, massimo 10 MB"
+              : "File del documento (PDF o foto, massimo 10 MB) *"}
+          </label>
           <input
             key={chiaveFile}
             type="file"
@@ -505,13 +590,28 @@ export default function DocumentiLavoratorePage() {
               fontWeight: 600,
             }}
           >
-            {salvataggio ? "Salvataggio..." : "Aggiungi documento"}
+            {salvataggio ? "Salvataggio..." : inModifica ? "Salva modifiche" : "Aggiungi documento"}
           </button>
+          {inModifica && (
+            <button
+              type="button"
+              onClick={annullaModifica}
+              style={{ padding: "9px 16px", borderRadius: 6, border: "1px solid #ccc", backgroundColor: "#fff" }}
+            >
+              Annulla
+            </button>
+          )}
           <button
             type="button"
             disabled
             title="In arrivo"
-            style={{ padding: "9px 16px", borderRadius: 6, border: "1px solid #ccc", backgroundColor: "#f0f0f0", color: "#888" }}
+            style={{
+              padding: "9px 16px",
+              borderRadius: 6,
+              border: "1px solid #ccc",
+              backgroundColor: "#f0f0f0",
+              color: "#888",
+            }}
           >
             Leggi automaticamente (in arrivo)
           </button>
