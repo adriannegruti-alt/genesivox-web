@@ -25,6 +25,7 @@ type DocScheda = {
 };
 
 type Scheda = {
+  livello: "completo" | "cantiere";
   lavoratore: {
     nome: string;
     cognome: string;
@@ -332,7 +333,7 @@ export default function VerificaTesserinoPage() {
           <div style={{ background: "#fff", borderRadius: 12, padding: 20, marginTop: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.12)" }}>
             <h3 style={{ margin: "0 0 4px" }}>Consultazione riservata</h3>
             <p style={{ margin: "0 0 12px", fontSize: 13, color: "#666" }}>
-              Per autorità di controllo e datore di lavoro. Ogni consultazione viene registrata (utente, data e ora).
+              Per autorità di controllo, datore di lavoro e responsabili del cantiere in cui il lavoratore è assegnato. Ogni consultazione viene registrata (utente, data e ora).
             </p>
 
             {!loggato && (
@@ -381,7 +382,7 @@ export default function VerificaTesserinoPage() {
               <div>
                 <p style={{ color: "#c0392b", fontWeight: 600 }}>Il tuo account non è abilitato alla consultazione.</p>
                 <p style={{ fontSize: 13, color: "#666" }}>
-                  Gli account di controllo vengono abilitati da Genesivox. Se sei un&apos;autorità di controllo, scrivici.
+                  Possono consultare la scheda le autorità di controllo abilitate, il datore di lavoro e, per i cantieri in cui il lavoratore è assegnato, committente, impresa edile, CSE/CSP, capocantiere e RSPP.
                 </p>
                 <button onClick={esci} style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #ccc", backgroundColor: "#fff" }}>
                   Esci
@@ -426,7 +427,7 @@ export default function VerificaTesserinoPage() {
                     <strong style={{ fontSize: 16 }}>
                       {scheda.lavoratore.cognome} {scheda.lavoratore.nome}
                     </strong>
-                    <div>CF: {scheda.lavoratore.codice_fiscale || "—"}</div>
+                    <div>CF: {scheda.livello === "completo" && <div>CF: {scheda.lavoratore.codice_fiscale || "—"}</div>}
                     <div>Mansione: {scheda.lavoratore.mansione || "—"}</div>
                     {scheda.lavoratore.tipo_rapporto === "autonomo" ? (
                       <div>Lavoratore autonomo · Committente: {scheda.lavoratore.committente || "—"}</div>
