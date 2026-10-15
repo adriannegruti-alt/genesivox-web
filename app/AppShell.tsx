@@ -71,6 +71,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const paginaPubblica =
     pathname?.startsWith("/login") ||
     pathname?.startsWith("/c/") ||
+    pathname?.startsWith("/t/") ||
     pathname?.startsWith("/reimposta-password") ||
     pathname?.startsWith("/crea-account") ||
     pathname?.startsWith("/privacy");
