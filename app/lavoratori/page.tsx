@@ -540,6 +540,9 @@ export default function LavoratoriPage() {
                   {l.data_assunzione ? new Date(l.data_assunzione).toLocaleDateString("it-IT") : "—"}
                 </td>
                 <td style={{ padding: 8, whiteSpace: "nowrap" }}>
+                  <Link href={`/lavoratori/${l.id}/cantieri`} style={{ ...stilePulsante, marginRight: 6 }}>
+                    Cantieri
+                  </Link>
                   <Link href={`/lavoratori/${l.id}/documenti`} style={{ ...stilePulsante, marginRight: 6 }}>
                     Documenti
                   </Link>
