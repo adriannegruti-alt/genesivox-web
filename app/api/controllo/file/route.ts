@@ -39,18 +39,13 @@ export async function POST(richiesta: NextRequest) {
     .maybeSingle();
   if (!lav) return NextResponse.json({ ok: false, errore: "Non trovato" }, { status: 404 });
 
-  // 4. Chi chiede può vedere? Datore di lavoro (proprietario) o autorità di controllo
+  // 4. Che livello di accesso ha chi chiede?
   const proprietario = lav.impresa_id === utente.id;
-  let autorita = false;
-  if (!proprietario) {
-    const { data: profilo } = await admin
-      .from("profili")
-      .select("autorita_controllo")
-      .eq("id", utente.id)
-      .maybeSingle();
-    autorita = !!profilo?.autorita_controllo;
-  }
-  if (!proprietario && !autorita) {
+  const { data: livello } = await admin.rpc("livello_accesso_lavoratore", {
+    p_lavoratore: lav.id,
+    p_utente: utente.id,
+  });
+  if (livello !== "completo" && livello !== "cantiere") {
     return NextResponse.json({ ok: false, errore: "Non autorizzato" }, { status: 403 });
   }
 
@@ -65,11 +60,16 @@ export async function POST(richiesta: NextRequest) {
   } else {
     const { data: doc } = await admin
       .from("documenti_lavoratore")
-      .select("id, file_path")
+      .select("id, categoria, file_path")
       .eq("id", documentoId)
       .eq("lavoratore_id", lav.id)
       .maybeSingle();
     if (!doc) return NextResponse.json({ ok: false, errore: "Documento non trovato" }, { status: 404 });
+
+    // Il file dell'idoneità sanitaria è riservato a datore di lavoro e autorità di controllo
+    if (doc.categoria === "idoneita_sanitaria" && livello !== "completo") {
+      return NextResponse.json({ ok: false, errore: "Non autorizzato" }, { status: 403 });
+    }
     bucket = "documenti-lavoratori";
     percorso = doc.file_path;
     idDocumento = doc.id;
@@ -87,7 +87,7 @@ export async function POST(richiesta: NextRequest) {
       documento_id: idDocumento,
       utente_id: utente.id,
       motivo: "file",
-      ruolo: "autorita_controllo",
+      ruolo: livello === "completo" ? "autorita_controllo" : "cantiere",
     });
   }
 
