@@ -15,6 +15,9 @@ type Visita = {
   creato_il: string;
 };
 
+// Campi del modulo: larghezza piena e margine interno compreso, così non escono dal riquadro
+const stileInput: React.CSSProperties = { width: "100%", padding: 8, boxSizing: "border-box" };
+
 export default function VisiteIspettivePage() {
   const params = useParams();
   const cantiereId = params.id as string;
@@ -147,7 +150,10 @@ export default function VisiteIspettivePage() {
       {errore && <p style={{ color: "red" }}>{errore}</p>}
 
       {puoRegistrare ? (
-        <form onSubmit={registraVisita} style={{ padding: 16, border: "1px solid #ddd", borderRadius: 8, marginBottom: 24 }}>
+        <form
+          onSubmit={registraVisita}
+          style={{ padding: 16, border: "1px solid #ddd", borderRadius: 8, marginBottom: 24, boxSizing: "border-box" }}
+        >
           <h3 style={{ marginTop: 0 }}>Nuova visita</h3>
 
           {nfcSupportato && (
@@ -165,20 +171,22 @@ export default function VisiteIspettivePage() {
             </p>
           )}
 
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <div style={{ marginBottom: 8 }}>
             <input
               placeholder="Nome"
               value={form.nome}
               onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
               required
-              style={{ flex: 1, padding: 8 }}
+              style={stileInput}
             />
+          </div>
+          <div style={{ marginBottom: 8 }}>
             <input
               placeholder="Cognome"
               value={form.cognome}
               onChange={(e) => setForm((f) => ({ ...f, cognome: e.target.value }))}
               required
-              style={{ flex: 1, padding: 8 }}
+              style={stileInput}
             />
           </div>
           <div style={{ marginBottom: 8 }}>
@@ -187,7 +195,7 @@ export default function VisiteIspettivePage() {
               value={form.ente}
               onChange={(e) => setForm((f) => ({ ...f, ente: e.target.value }))}
               required
-              style={{ width: "100%", padding: 8 }}
+              style={stileInput}
             />
           </div>
           <div style={{ marginBottom: 8 }}>
@@ -195,7 +203,7 @@ export default function VisiteIspettivePage() {
               placeholder="Numero tessera/badge"
               value={form.numeroTessera}
               onChange={(e) => setForm((f) => ({ ...f, numeroTessera: e.target.value }))}
-              style={{ width: "100%", padding: 8 }}
+              style={stileInput}
             />
           </div>
           <div style={{ marginBottom: 8 }}>
@@ -204,7 +212,7 @@ export default function VisiteIspettivePage() {
               value={form.motivo}
               onChange={(e) => setForm((f) => ({ ...f, motivo: e.target.value }))}
               required
-              style={{ width: "100%", padding: 8 }}
+              style={stileInput}
             />
           </div>
           <button type="submit" style={{ padding: "8px 16px" }}>
