@@ -1,21 +1,15 @@
 import { createClient } from "@supabase/supabase-js";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-// Questa funzione gira SOLO sul server (mai nel browser), quindi può usare
-// la chiave "service role" di Supabase, che ha il permesso di creare
-// utenti direttamente — cosa che il sito pubblico non può fare da solo.
-export async function POST(request: Request) {
+export const dynamic = "force-dynamic";
+
+// Chi può creare account lavoratore
+const RUOLI_AMMESSI = ["admin", "impresa", "impresa_edile"];
+
+// Gira SOLO sul server: usa la chiave "service role" di Supabase, che può creare utenti.
+// Per questo prima controlla chi sta chiamando.
+export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { email, password, nome, cognome, nomeUtente, impresa, attivita } = body;
-
-    if (!email || !password) {
-      return NextResponse.json({ error: "Email e password sono obbligatorie." }, { status: 400 });
-    }
-    if (password.length < 6) {
-      return NextResponse.json({ error: "La password deve avere almeno 6 caratteri." }, { status: 400 });
-    }
-
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const chiaveServizio = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
@@ -30,7 +24,39 @@ export async function POST(request: Request) {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Crea l'utente in Supabase Auth, con email già confermata: può accedere subito.
+    // 1. Serve un utente loggato
+    const intestazione = request.headers.get("authorization") || "";
+    const jwt = intestazione.startsWith("Bearer ") ? intestazione.slice(7) : "";
+    if (!jwt) return NextResponse.json({ error: "Non autorizzato." }, { status: 401 });
+
+    const { data: chiamante } = await supabaseAdmin.auth.getUser(jwt);
+    if (!chiamante?.user) return NextResponse.json({ error: "Non autorizzato." }, { status: 401 });
+
+    // 2. Con un ruolo abilitato
+    const { data: profiloChiamante } = await supabaseAdmin
+      .from("profili")
+      .select("ruolo")
+      .eq("id", chiamante.user.id)
+      .maybeSingle();
+    if (!profiloChiamante || !RUOLI_AMMESSI.includes(profiloChiamante.ruolo)) {
+      return NextResponse.json({ error: "Non hai i permessi per creare lavoratori." }, { status: 403 });
+    }
+
+    // 3. Dati richiesti
+    const body = await request.json();
+    const { email, password, nome, cognome, nomeUtente, impresa, attivita } = body;
+
+    if (!email || !password) {
+      return NextResponse.json({ error: "Email e password sono obbligatorie." }, { status: 400 });
+    }
+    if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: "Email non valida." }, { status: 400 });
+    }
+    if (typeof password !== "string" || password.length < 8) {
+      return NextResponse.json({ error: "La password deve avere almeno 8 caratteri." }, { status: 400 });
+    }
+
+    // 4. Crea l'utente con email già confermata: può accedere subito
     const { data: nuovoUtente, error: erroreCreazione } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -46,8 +72,7 @@ export async function POST(request: Request) {
 
     const nomeCompleto = [nome, cognome].filter(Boolean).join(" ");
 
-    // Completa il profilo come lavoratore gratuito: nessun piano collegato,
-    // ruolo "lavoratore" (vede solo i cantieri a cui viene assegnato).
+    // 5. Completa il profilo come lavoratore gratuito
     const { error: erroreProfilo } = await supabaseAdmin
       .from("profili")
       .update({
