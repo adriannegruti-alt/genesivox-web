@@ -109,20 +109,38 @@ export default function ScadenzePage() {
       ""
     );
     if (note === null) return; // annullato
+
     setOccupato(d.id);
-    const { error } = await supabase.from("richieste_corso").insert({
-      impresa_id: userId,
-      lavoratore_id: d.lavoratore_id,
-      documento_id: d.id,
-      tipo_corso: d.tipo,
-      note: note.trim() || null,
-    });
-    setOccupato(null);
-    if (error) {
-      setErrore("Non è stato possibile inviare la richiesta. Riprova.");
-      return;
+    try {
+      const { data: sessione } = await supabase.auth.getSession();
+      const accessToken = sessione?.session?.access_token;
+      if (!accessToken) {
+        setErrore("Sessione scaduta: accedi di nuovo.");
+        setOccupato(null);
+        return;
+      }
+      const risposta = await fetch("/api/richiesta-corso", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ documentoId: d.id, note }),
+      });
+      const json = await risposta.json().catch(() => null);
+      if (!risposta.ok || !json?.ok) {
+        setErrore(json?.errore || "Non è stato possibile inviare la richiesta. Riprova.");
+      } else if (json.giaInviata) {
+        setMessaggio("Per questo documento c'è già una richiesta aperta.");
+      } else {
+        const avvisati: string[] = json.avvisati || [];
+        setMessaggio(
+          avvisati.length > 0
+            ? `Richiesta inviata. Hai ricevuto la conferma via email e abbiamo avvisato anche: ${avvisati.join(", ")}.`
+            : "Richiesta inviata. Hai ricevuto la conferma via email. Ti ricontatteremo con le opzioni disponibili."
+        );
+      }
+    } catch {
+      setErrore("Non è stato possibile inviare la richiesta. Controlla la connessione e riprova.");
     }
-    setMessaggio("Richiesta inviata. Ti ricontatteremo con le opzioni disponibili.");
+    setOccupato(null);
     carica();
   }
 
@@ -164,7 +182,7 @@ export default function ScadenzePage() {
         <select
           value={finestra}
           onChange={(e) => setFinestra(Number(e.target.value))}
-          style={{ padding: 6, fontSize: 14 }}
+          style={{ padding: 6, fontSize: 14, maxWidth: "100%" }}
         >
           <option value={30}>Scaduti e in scadenza entro 30 giorni</option>
           <option value={60}>Scaduti e in scadenza entro 60 giorni</option>
@@ -239,7 +257,7 @@ export default function ScadenzePage() {
                             disabled={occupato === r.id}
                             style={{ ...stilePulsante, borderColor: "#1a73e8", color: "#1a73e8" }}
                           >
-                            Richiedi corso
+                            {occupato === r.id ? "Invio..." : "Richiedi corso"}
                           </button>
                         )
                       ) : (
@@ -256,7 +274,8 @@ export default function ScadenzePage() {
 
       <p style={{ fontSize: 12, color: "#777", marginTop: 16 }}>
         La richiesta di corso arriva a Genesivox, che ti ricontatta con le opzioni disponibili. Genesivox non eroga i
-        corsi.
+        corsi. Quando premi Richiedi corso vengono avvisati via email anche RSPP e capocantiere dei cantieri in cui il
+        lavoratore è assegnato; se il documento è già scaduto anche committente, impresa edile e responsabili.
       </p>
     </div>
   );
