@@ -88,6 +88,7 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
   const vociBase = [
     { href: `/cantieri/${cantiereId}`, label: "🏗️ Panoramica", esatto: true },
     { href: `/cantieri/${cantiereId}/persone`, label: "👥 Persone assegnate" },
+    ...(soloLavoratore ? [] : [{ href: `/cantieri/${cantiereId}/lavoratori`, label: "👷 Lavoratori in cantiere" }]),
     { href: `/cantieri/${cantiereId}/documenti`, label: "📄 I miei documenti" },
     ...(soloLavoratore ? [] : [{ href: `/cantieri/${cantiereId}/preventivi`, label: "💰 Preventivi" }]),
     { href: `/cantieri/${cantiereId}/presenze`, label: "🕒 Presenze" },
