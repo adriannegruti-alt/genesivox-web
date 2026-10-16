@@ -227,13 +227,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               Lavoratori
             </Link>
           )}
-          {autoritaControllo && (
+          {!autoritaControllo && (
             <Link
-              href="/ispettiva"
+              href="/lavoratori"
               onClick={() => setMenuAperto(null)}
-              style={stileLinkMenu(pathname === "/ispettiva")}
+              style={stileLinkMenu(!!pathname?.startsWith("/lavoratori"))}
             >
-              Vista Ispettiva
+              Lavoratori
+            </Link>
+          )}
+          {!autoritaControllo && (
+            <Link
+              href="/scadenze"
+              onClick={() => setMenuAperto(null)}
+              style={stileLinkMenu(!!pathname?.startsWith("/scadenze"))}
+            >
+              Scadenze
             </Link>
           )}
           {isAdmin && (
