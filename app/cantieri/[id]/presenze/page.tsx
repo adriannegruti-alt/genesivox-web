@@ -264,17 +264,26 @@ export default function PresenzePage() {
       )}
 
       {eOggi && (
-        <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16, backgroundColor: "#fafafa" }}>
+        <div
+          style={{
+            border: "1px solid #ddd",
+            borderRadius: 8,
+            padding: 16,
+            backgroundColor: "#fafafa",
+            boxSizing: "border-box",
+            overflow: "hidden",
+          }}
+        >
           <h3 style={{ marginTop: 0 }}>Registra ingresso o uscita manualmente</h3>
           <p style={{ fontSize: 13, color: "#666" }}>
             Per chi non scansiona il QR code. Si possono registrare più ingressi e uscite nella stessa giornata
             (per esempio pausa pranzo).
           </p>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <select
               value={membroDaAggiungere}
               onChange={(e) => setMembroDaAggiungere(e.target.value)}
-              style={{ flex: 1, padding: 8 }}
+              style={{ flex: 1, minWidth: 0, padding: 8, boxSizing: "border-box", fontSize: 14 }}
             >
               <option value="">Seleziona persona...</option>
               {membri.map((m) => (
@@ -288,7 +297,10 @@ export default function PresenzePage() {
               onClick={() => membroDaAggiungere && registraIngressoOUscita(membroDaAggiungere)}
               disabled={!membroDaAggiungere}
               style={{
-                padding: "8px 20px",
+                flexShrink: 0,
+                whiteSpace: "nowrap",
+                padding: "8px 12px",
+                fontSize: 13,
                 backgroundColor: selezionatoDentro ? "#c0392b" : "#16a34a",
                 color: "#fff",
                 border: "none",
