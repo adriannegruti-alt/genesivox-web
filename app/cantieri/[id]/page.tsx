@@ -45,7 +45,7 @@ export default function PanoramicaCantierePage() {
 
   if (!cantiere) return <p style={{ padding: 24 }}>Caricamento...</p>;
 
-  const linkPubblico = `https://genesivox-web.vercel.app/c/${cantiere.qr_token}`;
+  const linkPubblico = `https://app.genesivox.com/c/${cantiere.qr_token}`;
   const urlQrPiccolo = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(linkPubblico)}`;
   const urlQrGrande = `https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&margin=10&data=${encodeURIComponent(linkPubblico)}`;
 
