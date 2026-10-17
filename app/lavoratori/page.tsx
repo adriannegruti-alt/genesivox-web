@@ -18,6 +18,7 @@ type Lavoratore = {
   committente: string | null;
   in_subappalto: boolean;
   autorizzazione_subappalto: string | null;
+  email: string | null;
 };
 
 const FORM_VUOTO = {
@@ -25,6 +26,7 @@ const FORM_VUOTO = {
   nome: "",
   cognome: "",
   codice_fiscale: "",
+  email: "",
   mansione: "",
   data_assunzione: "",
   tipo_contratto: "",
@@ -104,7 +106,7 @@ export default function LavoratoriPage() {
     const { data, error } = await supabase
       .from("lavoratori")
       .select(
-        "id, nome, cognome, codice_fiscale, mansione, data_assunzione, attivo, tipo_rapporto, tipo_contratto, livello, committente, in_subappalto, autorizzazione_subappalto"
+        "id, nome, cognome, codice_fiscale, mansione, data_assunzione, attivo, tipo_rapporto, tipo_contratto, livello, committente, in_subappalto, autorizzazione_subappalto, email"
       )
       .order("cognome", { ascending: true })
       .order("nome", { ascending: true });
@@ -164,6 +166,12 @@ export default function LavoratoriPage() {
       return;
     }
 
+    const email = form.email.trim().toLowerCase();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setErrore("L'indirizzo email del lavoratore non sembra corretto.");
+      return;
+    }
+
     const cf = form.codice_fiscale.trim().toUpperCase();
     if (cf && cf.length !== 16) {
       const procedi = window.confirm("Il codice fiscale non ha 16 caratteri. Vuoi salvare comunque?");
@@ -175,6 +183,7 @@ export default function LavoratoriPage() {
       nome,
       cognome,
       codice_fiscale: cf || null,
+      email: email || null,
       mansione: form.mansione.trim() || null,
       data_assunzione: autonomo ? null : form.data_assunzione || null,
       tipo_contratto: autonomo ? null : form.tipo_contratto || null,
@@ -217,6 +226,7 @@ export default function LavoratoriPage() {
       nome: l.nome,
       cognome: l.cognome,
       codice_fiscale: l.codice_fiscale ?? "",
+      email: l.email ?? "",
       mansione: l.mansione ?? "",
       data_assunzione: l.data_assunzione ?? "",
       tipo_contratto: l.tipo_contratto ?? "",
@@ -380,6 +390,16 @@ export default function LavoratoriPage() {
             />
           </div>
           <div>
+            <label style={stileEtichetta}>Email del lavoratore (facoltativa, per avvisi di scadenza)</label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => aggiorna("email", e.target.value)}
+              style={stileCampo}
+              placeholder="nome@esempio.it"
+            />
+          </div>
+          <div>
             <label style={stileEtichetta}>Mansione (es. muratore, gruista)</label>
             <input value={form.mansione} onChange={(e) => aggiorna("mansione", e.target.value)} style={stileCampo} />
           </div>
@@ -453,6 +473,11 @@ export default function LavoratoriPage() {
             )}
           </div>
         )}
+
+        <p style={{ fontSize: 12, color: "#777", marginBottom: 0 }}>
+          L&apos;email del lavoratore serve solo per avvisarlo delle scadenze della sua formazione. Inseriscila
+          soltanto se il lavoratore è d&apos;accordo.
+        </p>
 
         {errore && <p style={{ color: "red", marginBottom: 0 }}>{errore}</p>}
         {messaggio && <p style={{ color: "#16a34a", marginBottom: 0 }}>{messaggio}</p>}
