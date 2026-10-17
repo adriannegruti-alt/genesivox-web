@@ -1,8 +1,0 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/controlla-notifiche",
-      "schedule": "0 5 * * *"
-    }
-  ]
-}
