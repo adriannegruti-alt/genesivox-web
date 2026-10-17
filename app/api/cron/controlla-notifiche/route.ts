@@ -6,7 +6,7 @@ import { inviaPush } from "@/lib/push";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const APP_URL = "https://genesivox-web.vercel.app";
+const APP_URL = "https://app.genesivox.com";
 
 // ---- Documenti dei cantieri (come prima) ----
 const SOGLIE_GIORNI = [30, 15, 7, 0];
