@@ -5,7 +5,7 @@ import { inviaPush } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
-const APP_URL = "https://genesivox-web.vercel.app";
+const APP_URL = "https://app.genesivox.com";
 
 // Chi riceve sempre l'avviso, nei cantieri in cui il lavoratore è assegnato
 const RUOLI_SEMPRE = ["rspp", "capocantiere"];
