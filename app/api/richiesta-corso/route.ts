@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { creaClientSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { inviaEmail } from "@/lib/email";
+import { inviaPush } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,12 @@ function riga(etichetta: string, valore: string): string {
   return `<tr><td style="padding:4px 12px 4px 0;color:#666">${etichetta}</td><td>${valore}</td></tr>`;
 }
 
-type Destinatario = { cantieri: Set<string>; ruoli: Set<string>; cantiereId: string };
+type Destinatario = {
+  cantieri: Set<string>;
+  ruoli: Set<string>;
+  cantiereId: string;
+  profiloId: string | null;
+};
 
 export async function POST(richiesta: NextRequest) {
   const admin = creaClientSupabaseAdmin();
@@ -122,12 +128,23 @@ export async function POST(richiesta: NextRequest) {
 
   // 5. Chi va avvisato nei cantieri in cui il lavoratore è assegnato
   const destinatari = new Map<string, Destinatario>();
-  const aggiungi = (email: string | undefined | null, nomeCantiere: string, ruolo: string, cantiereId: string) => {
+  const aggiungi = (
+    email: string | undefined | null,
+    nomeCantiere: string,
+    ruolo: string,
+    cantiereId: string,
+    profiloId: string | null
+  ) => {
     if (!email) return;
     const chiave = email.toLowerCase();
     if (chiave === (datore?.email || "").toLowerCase()) return; // il datore riceve già la sua email
     if (chiave === (lav.email || "").toLowerCase()) return; // il lavoratore riceve la sua
-    const attuale = destinatari.get(chiave) || { cantieri: new Set<string>(), ruoli: new Set<string>(), cantiereId };
+    const attuale = destinatari.get(chiave) || {
+      cantieri: new Set<string>(),
+      ruoli: new Set<string>(),
+      cantiereId,
+      profiloId,
+    };
     attuale.cantieri.add(nomeCantiere);
     attuale.ruoli.add(ruolo);
     destinatari.set(chiave, attuale);
@@ -174,11 +191,11 @@ export async function POST(richiesta: NextRequest) {
         const ruoloUtile =
           ruoli.find((r) => RUOLI_SEMPRE.includes(r)) ||
           (scaduto ? ruoli.find((r) => RUOLI_SE_SCADUTO.includes(r)) : undefined);
-        if (ruoloUtile) aggiungi(profilo?.email, c.nome, ruoloUtile, String(c.id));
+        if (ruoloUtile) aggiungi(profilo?.email, c.nome, ruoloUtile, String(c.id), m.profilo_id ?? null);
       }
       if (scaduto && c.creato_da) {
         const creatore = creatori.find((p) => p.id === c.creato_da);
-        aggiungi(creatore?.email, c.nome, "responsabile_cantiere", String(c.id));
+        aggiungi(creatore?.email, c.nome, "responsabile_cantiere", String(c.id), c.creato_da);
       }
     }
   }
@@ -201,6 +218,7 @@ export async function POST(richiesta: NextRequest) {
   ];
 
   let inviate = 0;
+  let push = 0;
 
   // 6a. Datore di lavoro
   if (datore?.email) {
@@ -217,6 +235,11 @@ export async function POST(richiesta: NextRequest) {
     const esito = await inviaEmail(datore.email, `Richiesta di corso inviata — ${doc.tipo} per ${nomeLavoratore}`, html);
     if (esito.ok) inviate += 1;
   }
+  push += await inviaPush(admin, [utente.id], {
+    titolo: "Richiesta di corso inviata",
+    testo: `${doc.tipo} per ${nomeLavoratore}`,
+    url: `${APP_URL}/scadenze`,
+  });
 
   // 6b. Lavoratore (solo se ha un'email registrata)
   if (lav.email) {
@@ -254,6 +277,14 @@ export async function POST(richiesta: NextRequest) {
       : `Corso di formazione richiesto — ${nomeLavoratore} (${cantieriTesto})`;
     const esito = await inviaEmail(email, oggetto, html);
     if (esito.ok) inviate += 1;
+
+    if (d.profiloId) {
+      push += await inviaPush(admin, [d.profiloId], {
+        titolo: scaduto ? "Formazione scaduta" : "Corso di formazione richiesto",
+        testo: `${nomeLavoratore} — ${cantieriTesto}`,
+        url: `${APP_URL}/cantieri/${d.cantiereId}/lavoratori`,
+      });
+    }
   }
 
   // 6d. Copia interna a Genesivox (solo se l'indirizzo è impostato su Vercel)
@@ -270,5 +301,5 @@ export async function POST(richiesta: NextRequest) {
     await inviaEmail(emailInterna, `[Richiesta corso] ${doc.tipo} — ${nomeLavoratore}`, html);
   }
 
-  return NextResponse.json({ ok: true, inviate, avvisati: elencoAvvisati });
+  return NextResponse.json({ ok: true, inviate, push, avvisati: elencoAvvisati });
 }
