@@ -172,6 +172,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   if (paginaPubblica) return <>{children}</>;
 
+  const suPaginaAccessi = !!pathname?.startsWith("/lavoratori/accessi");
+
   return (
     <div style={{ fontFamily: "sans-serif" }}>
       {/* Barra strumenti in alto */}
@@ -218,12 +220,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           >
             Archivio
           </button>
-      
+
           {!autoritaControllo && (
             <Link
               href="/lavoratori"
               onClick={() => setMenuAperto(null)}
-              style={stileLinkMenu(!!pathname?.startsWith("/lavoratori"))}
+              style={stileLinkMenu(!!pathname?.startsWith("/lavoratori") && !suPaginaAccessi)}
             >
               Lavoratori
             </Link>
@@ -235,6 +237,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               style={stileLinkMenu(!!pathname?.startsWith("/scadenze"))}
             >
               Scadenze
+            </Link>
+          )}
+          {!autoritaControllo && (
+            <Link
+              href="/lavoratori/accessi"
+              onClick={() => setMenuAperto(null)}
+              style={stileLinkMenu(suPaginaAccessi)}
+            >
+              Accessi ai dati
             </Link>
           )}
           {isAdmin && (
@@ -386,110 +397,3 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                             width: 22,
                             height: 22,
                             borderRadius: "50%",
-                            flexShrink: 0,
-                            backgroundColor: selezionato ? COLORE_BRAND : "#c7d7ef",
-                            color: "#fff",
-                            fontSize: 11,
-                            fontWeight: 700,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          {etichetta.charAt(0).toUpperCase()}
-                        </span>
-                        {!compatto && (
-                          <span
-                            style={{
-                              fontSize: 13,
-                              color: COLORE_TESTO,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                            }}
-                          >
-                            {etichetta}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {utentiAdmin.length === 0 && !utenteSelezionato && (
-                    <p style={{ color: "#8a8f98", fontSize: 12 }}>Nessun utente.</p>
-                  )}
-                </div>
-
-                {/* Colonna 2: cantieri dell'utente scelto a sinistra */}
-                {utenteSelezionato && (
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 11, color: "#8a8f98", margin: "0 0 8px" }}>SUOI CANTIERI</p>
-                    {cantieriUtenteSelezionato.map((c) => (
-                      <Link
-                        key={c.id}
-                        href={`/cantieri/${c.id}`}
-                        onClick={() => setMenuAperto(null)}
-                        style={{
-                          display: "block",
-                          padding: "9px 10px",
-                          borderRadius: 6,
-                          textDecoration: "none",
-                          color: COLORE_TESTO,
-                          borderBottom: `1px solid ${COLORE_SIDEBAR_DIVISORE}`,
-                        }}
-                      >
-                        {c.nome}
-                      </Link>
-                    ))}
-                    {cantieriUtenteSelezionato.length === 0 && (
-                      <p style={{ color: "#8a8f98", fontSize: 13 }}>Nessun cantiere per questo utente.</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {menuAperto === "archivio" && (
-              <div>
-                {cantieriArchiviati.map((c) => (
-                  <div
-                    key={c.id}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "9px 10px",
-                      fontSize: 14,
-                      borderBottom: `1px solid ${COLORE_SIDEBAR_DIVISORE}`,
-                    }}
-                  >
-                    <Link href={`/cantieri/${c.id}`} style={{ color: COLORE_TESTO, textDecoration: "none" }}>
-                      {c.nome}
-                    </Link>
-                    <button
-                      onClick={() => ripristinaCantiere(c.id)}
-                      style={{
-                        fontSize: 12,
-                        padding: "3px 10px",
-                        borderRadius: 6,
-                        border: `1px solid ${COLORE_SIDEBAR_BORDO}`,
-                        backgroundColor: "#fff",
-                        color: COLORE_BRAND,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Ripristina
-                    </button>
-                  </div>
-                ))}
-                {cantieriArchiviati.length === 0 && (
-                  <p style={{ color: "#8a8f98", fontSize: 13 }}>Nessun cantiere archiviato.</p>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
-      </div>
-    </div>
-  );
-}
