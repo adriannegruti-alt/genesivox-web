@@ -73,6 +73,9 @@ export async function POST(richiesta: NextRequest) {
   if (doc.categoria !== "formazione") {
     return NextResponse.json({ ok: false, errore: "La richiesta di corso vale solo per la formazione." }, { status: 400 });
   }
+  if (!doc.data_scadenza) {
+    return NextResponse.json({ ok: false, errore: "Il documento non ha una data di scadenza." }, { status: 400 });
+  }
 
   const { data: lav } = await admin
     .from("lavoratori")
@@ -81,11 +84,13 @@ export async function POST(richiesta: NextRequest) {
     .maybeSingle();
   if (!lav) return NextResponse.json({ ok: false, errore: "Lavoratore non trovato" }, { status: 404 });
 
-  // 3. Evita doppioni: se c'è già una richiesta aperta per questo documento, ci fermiamo
+  // 3. Evita doppioni: una richiesta già aperta conta solo se è per la scadenza attuale.
+  //    Se il documento è stato rinnovato (scadenza cambiata) si può richiedere di nuovo.
   const { data: aperta } = await admin
     .from("richieste_corso")
     .select("id")
     .eq("documento_id", doc.id)
+    .eq("scadenza_richiesta", doc.data_scadenza)
     .in("stato", ["nuova", "inoltrata"])
     .limit(1)
     .maybeSingle();
@@ -97,6 +102,7 @@ export async function POST(richiesta: NextRequest) {
     documento_id: doc.id,
     tipo_corso: doc.tipo,
     note: note.trim() || null,
+    scadenza_richiesta: doc.data_scadenza,
   });
   if (erroreInserimento) {
     return NextResponse.json({ ok: false, errore: erroreInserimento.message }, { status: 500 });
