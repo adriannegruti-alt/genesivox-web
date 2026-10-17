@@ -5,7 +5,7 @@ import { inviaPush } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
-const APP_URL = "https://genesivox-web.vercel.app";
+const APP_URL = "https://app.genesivox.com";
 
 // Chi riceve l'email quando il documento è già scaduto al momento del caricamento
 const RUOLI_SE_SCADUTO = ["impresa", "impresa_edile", "capocantiere", "cse_csp", "committente", "responsabile_lavori"];
