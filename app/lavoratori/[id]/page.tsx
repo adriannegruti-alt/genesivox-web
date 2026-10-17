@@ -6,7 +6,7 @@ import Link from "next/link";
 import QRCode from "qrcode";
 import { supabase } from "@/lib/supabaseClient";
 
-const SITO = "https://genesivox-web.vercel.app";
+const SITO = "https://app.genesivox.com";
 
 type Lavoratore = {
   id: string;
