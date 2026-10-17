@@ -52,6 +52,7 @@ function stato(giorni: number): { testo: string; colore: string; sfondo: string 
 export default function ScadenzePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [documenti, setDocumenti] = useState<Doc[]>([]);
+  // chiavi "idDocumento|dataScadenza" delle richieste ancora aperte
   const [richiesti, setRichiesti] = useState<Set<string>>(new Set());
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
@@ -89,9 +90,15 @@ export default function ScadenzePage() {
 
     const { data: richieste } = await supabase
       .from("richieste_corso")
-      .select("documento_id")
+      .select("documento_id, scadenza_richiesta")
       .in("stato", ["nuova", "inoltrata"]);
-    setRichiesti(new Set((richieste || []).map((r: any) => String(r.documento_id))));
+    setRichiesti(
+      new Set(
+        (richieste || [])
+          .filter((r: any) => r.scadenza_richiesta)
+          .map((r: any) => `${r.documento_id}|${r.scadenza_richiesta}`)
+      )
+    );
 
     setCaricamento(false);
   }
@@ -128,7 +135,7 @@ export default function ScadenzePage() {
       if (!risposta.ok || !json?.ok) {
         setErrore(json?.errore || "Non è stato possibile inviare la richiesta. Riprova.");
       } else if (json.giaInviata) {
-        setMessaggio("Per questo documento c'è già una richiesta aperta.");
+        setMessaggio("Per questa scadenza c'è già una richiesta aperta.");
       } else {
         const avvisati: string[] = json.avvisati || [];
         setMessaggio(
@@ -216,7 +223,7 @@ export default function ScadenzePage() {
             <tbody>
               {visibili.map((r) => {
                 const s = stato(r.giorni);
-                const gia = richiesti.has(r.id);
+                const gia = richiesti.has(`${r.id}|${r.data_scadenza}`);
                 return (
                   <tr key={r.id} style={{ borderBottom: "1px solid #eee" }}>
                     <td style={{ padding: 8, fontWeight: 600 }}>
