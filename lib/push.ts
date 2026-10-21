@@ -15,22 +15,21 @@ function configura(): boolean {
   return true;
 }
 
-// Invia una notifica push a tutti i dispositivi iscritti delle persone indicate.
-// Non solleva mai errori: se qualcosa va storto, l'email è già partita comunque.
-export async function inviaPush(admin: any, profiloIds: string[], contenuto: Contenuto): Promise<number> {
+export async function inviaPush(
+  admin: any,
+  profiloIds: string[],
+  contenuto: Contenuto
+): Promise<number> {
   try {
     if (profiloIds.length === 0) return 0;
-    if (!configura()) {
-      console.error("push: chiavi VAPID mancanti");
-      return 0;
-    }
+    if (!configura()) return 0;
 
     const { data } = await admin
       .from("sottoscrizioni_push")
       .select("id, endpoint, p256dh, auth")
       .in("profilo_id", profiloIds);
-    const righe = (data || []) as any[];
 
+    const righe = (data || []) as any[];
     let inviate = 0;
     const daEliminare: string[] = [];
 
@@ -44,9 +43,9 @@ export async function inviaPush(admin: any, profiloIds: string[], contenuto: Con
           );
           inviate++;
         } catch (errore: any) {
-          console.error("push: invio fallito", errore?.statusCode, String(errore?.body || errore?.message || "").slice(0, 200));
-          // 404/410 = il dispositivo non esiste più: lo togliamo dall'elenco
-          if (errore?.statusCode === 404 || errore?.statusCode === 410) daEliminare.push(riga.id);
+          if (errore?.statusCode === 404 || errore?.statusCode === 410) {
+            daEliminare.push(riga.id);
+          }
         }
       })
     );
@@ -55,8 +54,7 @@ export async function inviaPush(admin: any, profiloIds: string[], contenuto: Con
       await admin.from("sottoscrizioni_push").delete().in("id", daEliminare);
     }
     return inviate;
-  } catch (e: any) {
-    console.error("push: errore generale", String(e?.message || e).slice(0, 200));
+  } catch {
     return 0;
   }
 }
