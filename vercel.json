@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/controlla-notifiche",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/promemoria-prova",
+      "schedule": "0 7 * * *"
     }
   ]
 }
