@@ -120,7 +120,7 @@ export default function LoginPage() {
           </p>
 
           <p style={{ marginTop: 8, fontSize: 14, color: "#666" }}>
-            Il primo accesso avviene tramite il link ricevuto via email dopo l'acquisto del piano.
+            Hai ricevuto l'invito via email? Premi "Password dimenticata?", inserisci la tua email e scegli la tua password.
           </p>
 
           <p style={{ marginTop: 20, fontSize: 14, borderTop: "1px solid #eee", paddingTop: 16 }}>
