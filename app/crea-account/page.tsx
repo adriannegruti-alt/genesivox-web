@@ -146,7 +146,11 @@ export default function CreaAccountPage() {
         ) : (
           <>
             <h1>Richiesta inviata</h1>
-            <p>La richiesta di creazione account è stata registrata ed è in attesa di approvazione.</p>
+            <p>
+              Abbiamo ricevuto la tua richiesta. Ti scriveremo all'email indicata, di solito entro 24 ore,
+              con le istruzioni per scegliere la password e accedere. Se sei tra i primi iscritti, hai 30
+              giorni di prova gratuita e ti aiutiamo a creare l'account e i primi cantieri.
+            </p>
           </>
         )}
         <p style={{ marginTop: 20, fontSize: 14 }}>
