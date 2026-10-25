@@ -76,6 +76,8 @@ type Profilo = {
   piano_id: string | null;
   autorita_controllo: boolean | null;
   tipo_account: string | null;
+  prova_scade_il?: string | null;
+  prova_modificata?: boolean;
 };
 
 const TIPI_ACCOUNT = [
@@ -127,7 +129,7 @@ export default function AdminPage() {
     const { data: elencoProfili } = await supabase
       .from("profili")
       .select(
-        "id, email, ruolo, impresa, nome_utente, codice_azienda, data_abbonamento, piano_id, autorita_controllo, tipo_account"
+        "id, email, ruolo, impresa, nome_utente, codice_azienda, data_abbonamento, piano_id, autorita_controllo, tipo_account, prova_scade_il"
       )
       .order("email");
     setProfili(elencoProfili || []);
@@ -204,9 +206,7 @@ export default function AdminPage() {
       codiceAzienda = generaCodiceAzienda(profilo.impresa, new Date(profilo.data_abbonamento));
     }
 
-    const { error } = await supabase
-      .from("profili")
-      .update({
+    const aggiornamento: Record<string, any> = {
         ruolo: profilo.ruolo,
         impresa: profilo.impresa,
         nome_utente: profilo.nome_utente,
@@ -215,7 +215,17 @@ export default function AdminPage() {
         autorita_controllo: profilo.autorita_controllo,
         codice_azienda: codiceAzienda,
         tipo_account: profilo.tipo_account || null,
-      })
+    };
+    // La scadenza prova si invia solo se l'hai modificata tu: altrimenti la gestisce il sistema.
+    if (profilo.prova_modificata) {
+      aggiornamento.prova_scade_il = profilo.prova_scade_il
+        ? new Date(`${profilo.prova_scade_il.slice(0, 10)}T23:59:00`).toISOString()
+        : null;
+    }
+
+    const { error } = await supabase
+      .from("profili")
+      .update(aggiornamento)
       .eq("id", profilo.id);
 
     setSalvataggioId(null);
@@ -348,6 +358,7 @@ export default function AdminPage() {
               <th style={{ padding: 8 }}>Tipo account</th>
               <th style={{ padding: 8 }}>Piano</th>
               <th style={{ padding: 8 }}>Data abbonamento</th>
+              <th style={{ padding: 8 }}>Scadenza prova</th>
               <th style={{ padding: 8 }}>Codice azienda</th>
               <th style={{ padding: 8 }}>Autorità controllo</th>
               <th style={{ padding: 8 }}></th>
@@ -416,6 +427,18 @@ export default function AdminPage() {
                     type="date"
                     value={p.data_abbonamento ?? ""}
                     onChange={(e) => aggiornaCampo(p.id, "data_abbonamento", e.target.value || null)}
+                    style={{ padding: 6, borderRadius: 6, border: "1px solid #d0d5dd" }}
+                  />
+                </td>
+                <td style={{ padding: 8 }}>
+                  <input
+                    type="date"
+                    value={p.prova_scade_il ? p.prova_scade_il.slice(0, 10) : ""}
+                    onChange={(e) => {
+                      aggiornaCampo(p.id, "prova_scade_il", e.target.value || null);
+                      aggiornaCampo(p.id, "prova_modificata", true);
+                    }}
+                    title="Vuoto = nessuna scadenza (account a pagamento)"
                     style={{ padding: 6, borderRadius: 6, border: "1px solid #d0d5dd" }}
                   />
                 </td>
