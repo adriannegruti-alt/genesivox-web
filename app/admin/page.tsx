@@ -59,8 +59,6 @@ type Richiesta = {
   indirizzo: string | null;
   email: string;
   cellulare: string | null;
-  nome_utente: string | null;
-  parola: string | null;
   stato: string;
   creato_il: string;
   tipo_account: string | null;
@@ -137,7 +135,7 @@ export default function AdminPage() {
     const { data: elencoRichieste } = await supabase
       .from("richieste_account")
       .select(
-        "id, nome, cognome, impresa, attivita, piva, codice_fiscale, indirizzo, email, cellulare, nome_utente, parola, stato, creato_il, tipo_account, ruolo_richiesto"
+        "id, nome, cognome, impresa, attivita, piva, codice_fiscale, indirizzo, email, cellulare, stato, creato_il, tipo_account, ruolo_richiesto"
       )
       .eq("stato", "in_attesa")
       .order("creato_il", { ascending: true });
@@ -165,7 +163,7 @@ export default function AdminPage() {
 
       const aggiornamentoProfilo: Record<string, any> = {
         impresa: richiesta.impresa,
-        nome_utente: richiesta.nome_utente,
+        nome_utente: richiesta.impresa || [richiesta.nome, richiesta.cognome].filter(Boolean).join(" "),
         attivita_base: richiesta.attivita,
         tipo_account: richiesta.tipo_account,
       };
@@ -262,10 +260,10 @@ export default function AdminPage() {
           Richieste in attesa di approvazione{richieste.length > 0 ? ` (${richieste.length})` : ""}
         </h2>
         <p style={{ color: "#666", fontSize: 13, marginTop: 0 }}>
-          Arrivano dalla pagina pubblica "Crea Account". Per attivarle: copia email e password qui
-          sotto, crea il login su Supabase (Authentication → Add user) con quegli stessi dati, poi
-          premi "Approvata": impresa, nome utente e attività vengono copiati in automatico sul
-          profilo appena creato.
+          Arrivano dalla pagina pubblica "Crea Account". Per attivarle: copia l'email qui sotto,
+          su Supabase vai in Authentication → Users → Invite user e incolla l'email (il cliente riceve
+          un'email per scegliere la propria password), poi premi "Approvata": impresa, nome utente,
+          attività e tipo account vengono copiati in automatico sul profilo.
         </p>
 
         {richieste.length === 0 && <p style={{ color: "#8a8f98", fontSize: 13 }}>Nessuna richiesta in attesa.</p>}
@@ -285,10 +283,8 @@ export default function AdminPage() {
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4, columnGap: 24 }}>
               <span><strong>Nome:</strong> {r.nome} {r.cognome}</span>
               <span><strong>Email:</strong> {r.email}</span>
-              <span><strong>Password:</strong> {r.parola || "—"}</span>
               <span><strong>Impresa:</strong> {r.impresa || "—"}</span>
               <span><strong>Attività:</strong> {r.attivita || "—"}</span>
-              <span><strong>Nome utente:</strong> {r.nome_utente || "—"}</span>
               <span><strong>P.IVA:</strong> {r.piva || "—"}</span>
               <span><strong>Cod. fiscale:</strong> {r.codice_fiscale || "—"}</span>
               <span><strong>Indirizzo:</strong> {r.indirizzo || "—"}</span>
