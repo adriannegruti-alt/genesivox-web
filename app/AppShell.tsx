@@ -204,8 +204,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               letterSpacing: 0.2,
               color: COLORE_BRAND,
               textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
             }}
           >
+            <img src="/logo-256.png" alt="" width={28} height={28} style={{ display: "block" }} />
             GENESIVOX
           </Link>
           <button
