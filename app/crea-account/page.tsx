@@ -1,372 +1,460 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+   import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
+const RUOLI = [
+  { value: "admin", label: "Admin" },
+  { value: "rspp", label: "RSPP" },
+  { value: "coordinatore", label: "CSE / CSP" },
+  { value: "responsabile_lavori", label: "Responsabile dei Lavori (RL)" },
+  { value: "direttore_lavori", label: "Direttore Lavori (DL)" },
+  { value: "impresa", label: "Impresa" },
+  { value: "lavoratore", label: "Lavoratore" },
+];
+
+const SIGLE_SOCIETARIE = [
+  "S\\.?R\\.?L\\.?S\\.?",
+  "S\\.?R\\.?L\\.?",
+  "S\\.?A\\.?S\\.?",
+  "S\\.?N\\.?C\\.?",
+  "S\\.?P\\.?A\\.?",
+  "S\\.?S\\.?D\\.?",
+  "S\\.?S\\.?",
+  "S\\.?A\\.?",
+  "SOCIETA['’ ]?\\s*COOPERATIVA",
+  "SOC\\.?\\s*COOP\\.?",
+  "COOPERATIVA",
+  "COOP\\.?",
+  "DITTA\\s+INDIVIDUALE",
+  "IMPRESA\\s+INDIVIDUALE",
+];
+
+function generaCodiceAzienda(nomeAzienda: string, dataRiferimento: Date): string {
+  let nome = nomeAzienda.toUpperCase();
+  nome = nome.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  for (const sigla of SIGLE_SOCIETARIE) {
+    const pattern = new RegExp("\\b" + sigla + "\\b", "g");
+    nome = nome.replace(pattern, " ");
+  }
+  nome = nome.replace(/[^A-Z0-9]/g, "");
+  if (nome.length > 14) nome = nome.slice(0, 14);
+  if (!nome) nome = "AZIENDA";
+  const mese = String(dataRiferimento.getMonth() + 1).padStart(2, "0");
+  const anno = dataRiferimento.getFullYear();
+  return `${nome}${mese}${anno}`;
+}
+
+type Piano = { id: string; nome: string };
+
+type Richiesta = {
+  id: string;
+  nome: string;
+  cognome: string;
+  impresa: string | null;
+  attivita: string | null;
+  piva: string | null;
+  codice_fiscale: string | null;
+  indirizzo: string | null;
+  email: string;
+  cellulare: string | null;
+  stato: string;
+  creato_il: string;
+  tipo_account: string | null;
+  ruolo_richiesto: string | null;
+};
+
+type Profilo = {
+  id: string;
+  email: string;
+  ruolo: string;
+  impresa: string | null;
+  nome_utente: string | null;
+  codice_azienda: string | null;
+  data_abbonamento: string | null;
+  piano_id: string | null;
+  autorita_controllo: boolean | null;
+  tipo_account: string | null;
+};
+
 const TIPI_ACCOUNT = [
-  { value: "committente", label: "Committente", descrizione: "Chi commissiona i lavori e investe nel progetto." },
-  { value: "impresa_edile", label: "Impresa edile", descrizione: "Chi gestisce l'esecuzione del cantiere." },
-  { value: "entrambi", label: "Entrambi", descrizione: "Sei sia Committente che Impresa edile." },
+  { value: "", label: "— (nessuno, es. lavoratore)" },
+  { value: "committente", label: "Committente" },
+  { value: "impresa_edile", label: "Impresa edile" },
+  { value: "entrambi", label: "Entrambi" },
 ];
 
-const RUOLI_PROFESSIONISTA = [
-  { value: "coordinatore", label: "CSE / CSP", descrizione: "Coordinatore per la sicurezza in fase di progettazione/esecuzione." },
-  { value: "rspp", label: "RSPP", descrizione: "Responsabile del Servizio di Prevenzione e Protezione." },
-];
+const ETICHETTE_RUOLO_RICHIESTO: Record<string, string> = {
+  coordinatore: "CSE / CSP",
+  rspp: "RSPP",
+};
 
-export default function CreaAccountPage() {
-  const [isLavoratore, setIsLavoratore] = useState(false);
-  const [isProfessionista, setIsProfessionista] = useState(false);
-  const [tipoAccount, setTipoAccount] = useState("committente");
-  const [ruoloProfessionista, setRuoloProfessionista] = useState("coordinatore");
+export default function AdminPage() {
+  const [caricamento, setCaricamento] = useState(true);
+  const [autorizzato, setAutorizzato] = useState(false);
+  const [piani, setPiani] = useState<Piano[]>([]);
+  const [profili, setProfili] = useState<Profilo[]>([]);
+  const [ricerca, setRicerca] = useState("");
+  const [salvataggioId, setSalvataggioId] = useState<string | null>(null);
+  const [messaggioId, setMessaggioId] = useState<string | null>(null);
+  const [richieste, setRichieste] = useState<Richiesta[]>([]);
 
-  const [form, setForm] = useState({
-    nome: "",
-    cognome: "",
-    impresa: "",
-    attivita: "",
-    piva: "",
-    codiceFiscale: "",
-    indirizzo: "",
-    email: "",
-    cellulare: "",
-    nomeUtente: "",
-    parola: "",
-    confermaParola: "",
-  });
-  const [nomeUtenteModificatoAMano, setNomeUtenteModificatoAMano] = useState(false);
-  const [consensoPrivacy, setConsensoPrivacy] = useState(false);
-  const [consensoAltro, setConsensoAltro] = useState(false);
-  const [inviato, setInviato] = useState(false);
-  const [lavoratoreCreatoSubito, setLavoratoreCreatoSubito] = useState(false);
-  const [errore, setErrore] = useState<string | null>(null);
-  const [invioInCorso, setInvioInCorso] = useState(false);
+  async function carica() {
+    setCaricamento(true);
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) {
+      setCaricamento(false);
+      return;
+    }
 
-  function aggiorna(campo: string, valore: string) {
-    setForm((f) => {
-      const nuovo = { ...f, [campo]: valore };
-      // Auto-compila il nome utente dall'impresa, finché l'utente non lo modifica a mano
-      if (campo === "impresa" && !nomeUtenteModificatoAMano) {
-        nuovo.nomeUtente = valore;
-      }
-      if (campo === "nomeUtente") {
-        setNomeUtenteModificatoAMano(true);
-      }
-      return nuovo;
-    });
+    const { data: mioProfilo } = await supabase
+      .from("profili")
+      .select("ruolo")
+      .eq("id", userData.user.id)
+      .maybeSingle();
+
+    if (mioProfilo?.ruolo !== "admin") {
+      setAutorizzato(false);
+      setCaricamento(false);
+      return;
+    }
+    setAutorizzato(true);
+
+    const { data: elencoPiani } = await supabase.from("piani").select("id, nome").order("prezzo_centesimi");
+    setPiani(elencoPiani || []);
+
+    const { data: elencoProfili } = await supabase
+      .from("profili")
+      .select(
+        "id, email, ruolo, impresa, nome_utente, codice_azienda, data_abbonamento, piano_id, autorita_controllo, tipo_account"
+      )
+      .order("email");
+    setProfili(elencoProfili || []);
+
+    const { data: elencoRichieste } = await supabase
+      .from("richieste_account")
+      .select(
+        "id, nome, cognome, impresa, attivita, piva, codice_fiscale, indirizzo, email, cellulare, stato, creato_il, tipo_account, ruolo_richiesto"
+      )
+      .eq("stato", "in_attesa")
+      .order("creato_il", { ascending: true });
+    setRichieste(elencoRichieste || []);
+
+    setCaricamento(false);
   }
 
-  async function invia(e: React.FormEvent) {
-    e.preventDefault();
-    setErrore(null);
+  async function aggiornaStatoRichiesta(richiesta: Richiesta, stato: "approvato" | "rifiutato") {
+    if (stato === "approvato") {
+      // Copia impresa, nome utente e attività nel profilo collegato (trovato per email).
+      // Il profilo deve già esistere: l'utente Supabase Auth va creato PRIMA di premere Approvata.
+      const { data: profiloEsistente } = await supabase
+        .from("profili")
+        .select("id")
+        .eq("email", richiesta.email)
+        .maybeSingle();
 
-    if (!consensoPrivacy) {
-      setErrore("Devi accettare il trattamento dei dati personali per proseguire.");
-      return;
-    }
-
-    if (form.parola.length < 6) {
-      setErrore("La password deve avere almeno 6 caratteri.");
-      return;
-    }
-
-    if (form.parola !== form.confermaParola) {
-      setErrore("Le due password non coincidono.");
-      return;
-    }
-
-    setInvioInCorso(true);
-
-    if (isLavoratore) {
-      // Lavoratore: account gratuito creato subito, nessuna attesa di approvazione.
-      const risposta = await fetch("/api/crea-lavoratore", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: form.email,
-          password: form.parola,
-          nome: form.nome,
-          cognome: form.cognome,
-          nomeUtente: form.nomeUtente || null,
-          impresa: form.impresa || null,
-          attivita: form.attivita || null,
-        }),
-      });
-
-      const risultato = await risposta.json();
-      setInvioInCorso(false);
-
-      if (!risposta.ok) {
-        setErrore(risultato.error || "Impossibile creare l'account.");
+      if (!profiloEsistente) {
+        alert(
+          "Non trovo ancora nessun account con questa email. Crea prima il login su Supabase (Authentication → Add user) con la stessa email, poi riprova ad approvare."
+        );
         return;
       }
 
-      setLavoratoreCreatoSubito(true);
-      setInviato(true);
-      return;
+      const aggiornamentoProfilo: Record<string, any> = {
+        impresa: richiesta.impresa,
+        nome_utente: richiesta.impresa || [richiesta.nome, richiesta.cognome].filter(Boolean).join(" "),
+        attivita_base: richiesta.attivita,
+        tipo_account: richiesta.tipo_account,
+      };
+      if (richiesta.ruolo_richiesto) {
+        // Richiesta come professionista tecnico (RSPP o CSE/CSP): imposta anche il Ruolo dell'account.
+        aggiornamentoProfilo.ruolo = richiesta.ruolo_richiesto;
+      }
+
+      const { error: erroreAggiornamento } = await supabase
+        .from("profili")
+        .update(aggiornamentoProfilo)
+        .eq("id", profiloEsistente.id);
+
+      if (erroreAggiornamento) {
+        alert("Errore nel copiare i dati sul profilo: " + erroreAggiornamento.message);
+        return;
+      }
     }
 
-    // Impresa/Committente o Professionista tecnico: resta una richiesta soggetta ad approvazione.
-    const { error } = await supabase.from("richieste_account").insert({
-      nome: form.nome,
-      cognome: form.cognome,
-      impresa: form.impresa || null,
-      attivita: form.attivita || null,
-      piva: form.piva || null,
-      codice_fiscale: form.codiceFiscale || null,
-      indirizzo: form.indirizzo || null,
-      email: form.email,
-      cellulare: form.cellulare || null,
-      nome_utente: form.nomeUtente || form.impresa || null,
-      parola: form.parola,
-      consenso_privacy: consensoPrivacy,
-      consenso_altro: consensoAltro,
-      tipo_account: isProfessionista ? null : tipoAccount,
-      ruolo_richiesto: isProfessionista ? ruoloProfessionista : null,
-    });
-
-    setInvioInCorso(false);
-
-    if (error) {
-      setErrore(error.message);
-      return;
-    }
-
-    setInviato(true);
+    await supabase.from("richieste_account").update({ stato }).eq("id", richiesta.id);
+    setRichieste((prev) => prev.filter((r) => r.id !== richiesta.id));
   }
 
-  if (inviato) {
+  useEffect(() => {
+    carica();
+  }, []);
+
+  function aggiornaCampo(id: string, campo: keyof Profilo, valore: any) {
+    setProfili((prev) => prev.map((p) => (p.id === id ? { ...p, [campo]: valore } : p)));
+  }
+
+  async function salvaRiga(profilo: Profilo) {
+    setSalvataggioId(profilo.id);
+    setMessaggioId(null);
+
+    let codiceAzienda = profilo.codice_azienda;
+    if (profilo.impresa && profilo.data_abbonamento) {
+      codiceAzienda = generaCodiceAzienda(profilo.impresa, new Date(profilo.data_abbonamento));
+    }
+
+    const { error } = await supabase
+      .from("profili")
+      .update({
+        ruolo: profilo.ruolo,
+        impresa: profilo.impresa,
+        nome_utente: profilo.nome_utente,
+        piano_id: profilo.piano_id,
+        data_abbonamento: profilo.data_abbonamento,
+        autorita_controllo: profilo.autorita_controllo,
+        codice_azienda: codiceAzienda,
+        tipo_account: profilo.tipo_account || null,
+      })
+      .eq("id", profilo.id);
+
+    setSalvataggioId(null);
+
+    if (error) {
+      setMessaggioId(`errore:${profilo.id}:${error.message}`);
+      return;
+    }
+
+    setProfili((prev) => prev.map((p) => (p.id === profilo.id ? { ...p, codice_azienda: codiceAzienda } : p)));
+    setMessaggioId(`ok:${profilo.id}`);
+  }
+
+  const profiliFiltrati = profili.filter((p) => {
+    const testo = ricerca.toLowerCase();
     return (
-      <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 500, margin: "0 auto" }}>
-        {lavoratoreCreatoSubito ? (
-          <>
-            <h1>Account creato</h1>
-            <p>Il tuo account è pronto: puoi accedere subito con l'email e la password che hai scelto.</p>
-          </>
-        ) : (
-          <>
-            <h1>Richiesta inviata</h1>
-            <p>La richiesta di creazione account è stata registrata ed è in attesa di approvazione.</p>
-          </>
-        )}
-        <p style={{ marginTop: 20, fontSize: 14 }}>
-          <a href="/login" style={{ color: "#1a73e8" }}>
-            {lavoratoreCreatoSubito ? "Vai al login" : "Torna al login"}
-          </a>
-        </p>
+      p.email?.toLowerCase().includes(testo) ||
+      p.impresa?.toLowerCase().includes(testo) ||
+      p.nome_utente?.toLowerCase().includes(testo)
+    );
+  });
+
+  if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
+
+  if (!autorizzato) {
+    return (
+      <div style={{ padding: 24 }}>
+        <h1>Accesso non consentito</h1>
+        <p>Questa pagina è riservata agli amministratori.</p>
       </div>
     );
   }
 
-  const campiDaMostrare = isLavoratore
-    ? [
-        { campo: "nome", label: "Nome", obbligatorio: true },
-        { campo: "cognome", label: "Cognome", obbligatorio: true },
-        { campo: "impresa", label: "Impresa per cui lavori (facoltativo)" },
-        { campo: "attivita", label: "Attività (es. idraulico, elettricista, muratore)" },
-        { campo: "email", label: "Email", obbligatorio: true, tipo: "email" },
-        { campo: "cellulare", label: "Cellulare" },
-        { campo: "nomeUtente", label: "Nome utente (modificabile)", obbligatorio: true },
-        { campo: "parola", label: "Password", obbligatorio: true, tipo: "password" },
-        { campo: "confermaParola", label: "Conferma password", obbligatorio: true, tipo: "password" },
-      ]
-    : [
-        { campo: "nome", label: "Nome", obbligatorio: true },
-        { campo: "cognome", label: "Cognome", obbligatorio: true },
-        { campo: "impresa", label: "Impresa" },
-        { campo: "attivita", label: "Attività (es. idraulico, elettricista, impresa edile)" },
-        { campo: "piva", label: "P.IVA" },
-        { campo: "codiceFiscale", label: "Codice Fiscale" },
-        { campo: "indirizzo", label: "Indirizzo" },
-        { campo: "email", label: "Email", obbligatorio: true, tipo: "email" },
-        { campo: "cellulare", label: "Cellulare" },
-        { campo: "nomeUtente", label: "Nome utente (auto da impresa, modificabile)", obbligatorio: true },
-        { campo: "parola", label: "Password", obbligatorio: true, tipo: "password" },
-        { campo: "confermaParola", label: "Conferma password", obbligatorio: true, tipo: "password" },
-      ];
-
   return (
-    <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 500, margin: "0 auto" }}>
-      <h1>Crea Account</h1>
-      <p style={{ color: "#666" }}>
-        {isLavoratore
-          ? "Compila i dati per creare subito il tuo account gratuito da lavoratore."
-          : "Compila i dati per richiedere la creazione di un nuovo account, soggetto ad approvazione."}
-      </p>
+    <div style={{ padding: 24, fontFamily: "sans-serif" }}>
+      <h1>Amministrazione clienti</h1>
+        <p><Link href="/admin/limiti">→ Limiti account (cantieri e storage)</Link></p>
 
-      <div
-        style={{
-          margin: "16px 0",
-          padding: 12,
-          border: "1px solid #d6e6fb",
-          backgroundColor: "#eef4fd",
-          borderRadius: 8,
-        }}
-      >
-        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 14 }}>
-          <input
-            type="checkbox"
-            checked={isLavoratore}
-            onChange={(e) => {
-              setIsLavoratore(e.target.checked);
-              if (e.target.checked) setIsProfessionista(false);
+
+      <div style={{ marginBottom: 28 }}>
+        <h2 style={{ fontSize: 17, marginBottom: 4 }}>
+          Richieste in attesa di approvazione{richieste.length > 0 ? ` (${richieste.length})` : ""}
+        </h2>
+        <p style={{ color: "#666", fontSize: 13, marginTop: 0 }}>
+          Arrivano dalla pagina pubblica "Crea Account". Per attivarle: copia l'email qui sotto,
+          su Supabase vai in Authentication → Users → Invite user e incolla l'email (il cliente riceve
+          un'email per scegliere la propria password), poi premi "Approvata": impresa, nome utente,
+          attività e tipo account vengono copiati in automatico sul profilo.
+        </p>
+
+        {richieste.length === 0 && <p style={{ color: "#8a8f98", fontSize: 13 }}>Nessuna richiesta in attesa.</p>}
+
+        {richieste.map((r) => (
+          <div
+            key={r.id}
+            style={{
+              border: "1px solid #e1eafb",
+              backgroundColor: "#f7fafe",
+              borderRadius: 8,
+              padding: 14,
+              marginBottom: 10,
+              fontSize: 13,
             }}
-            style={{ marginTop: 2 }}
-          />
-          <span>
-            <strong>Sono un lavoratore</strong> — crea subito un account gratuito, senza attesa di
-            approvazione. Vedrai solo i cantieri a cui verrai assegnato.
-          </span>
-        </label>
-      </div>
-
-      {!isLavoratore && (
-        <div
-          style={{
-            margin: "16px 0",
-            padding: 12,
-            border: "1px solid #f6d9a0",
-            backgroundColor: "#fff8ec",
-            borderRadius: 8,
-          }}
-        >
-          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 14 }}>
-            <input
-              type="checkbox"
-              checked={isProfessionista}
-              onChange={(e) => setIsProfessionista(e.target.checked)}
-              style={{ marginTop: 2 }}
-            />
-            <span>
-              <strong>Sono un professionista tecnico</strong> — RSPP o CSE/CSP, nominato da un
-              Committente/Impresa edile su un cantiere. Richiesta soggetta ad approvazione.
-            </span>
-          </label>
-
-          {isProfessionista && (
-            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-              {RUOLI_PROFESSIONISTA.map((r) => (
-                <label
-                  key={r.value}
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 8,
-                    padding: 10,
-                    border: ruoloProfessionista === r.value ? "2px solid #1a73e8" : "1px solid #ddd",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    fontSize: 13,
-                    backgroundColor: "#fff",
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="ruoloProfessionista"
-                    checked={ruoloProfessionista === r.value}
-                    onChange={() => setRuoloProfessionista(r.value)}
-                    style={{ marginTop: 2 }}
-                  />
-                  <span>
-                    <strong>{r.label}</strong>
-                    <br />
-                    <span style={{ color: "#666" }}>{r.descrizione}</span>
-                  </span>
-                </label>
-              ))}
+          >
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, columnGap: 24 }}>
+              <span><strong>Nome:</strong> {r.nome} {r.cognome}</span>
+              <span><strong>Email:</strong> {r.email}</span>
+              <span><strong>Impresa:</strong> {r.impresa || "—"}</span>
+              <span><strong>Attività:</strong> {r.attivita || "—"}</span>
+              <span><strong>P.IVA:</strong> {r.piva || "—"}</span>
+              <span><strong>Cod. fiscale:</strong> {r.codice_fiscale || "—"}</span>
+              <span><strong>Indirizzo:</strong> {r.indirizzo || "—"}</span>
+              <span><strong>Cellulare:</strong> {r.cellulare || "—"}</span>
+              <span><strong>Tipo account:</strong> {r.tipo_account || "—"}</span>
+              <span><strong>Ruolo richiesto:</strong> {r.ruolo_richiesto ? (ETICHETTE_RUOLO_RICHIESTO[r.ruolo_richiesto] || r.ruolo_richiesto) : "—"}</span>
             </div>
-          )}
-        </div>
-      )}
-
-      <form onSubmit={invia}>
-        {!isLavoratore && !isProfessionista && (
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 13, marginBottom: 6, fontWeight: 600 }}>
-              Che tipo di account sei?
-            </label>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {TIPI_ACCOUNT.map((t) => (
-                <label
-                  key={t.value}
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 8,
-                    padding: 10,
-                    border: tipoAccount === t.value ? "2px solid #1a73e8" : "1px solid #ddd",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    fontSize: 13,
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="tipoAccount"
-                    checked={tipoAccount === t.value}
-                    onChange={() => setTipoAccount(t.value)}
-                    style={{ marginTop: 2 }}
-                  />
-                  <span>
-                    <strong>{t.label}</strong>
-                    <br />
-                    <span style={{ color: "#666" }}>{t.descrizione}</span>
-                  </span>
-                </label>
-              ))}
+            <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+              <button
+                onClick={() => aggiornaStatoRichiesta(r, "approvato")}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 6,
+                  border: "1px solid #d6e6fb",
+                  backgroundColor: "#eef4fd",
+                  color: "#1a73e8",
+                  cursor: "pointer",
+                }}
+              >
+                Approvata (login già creato)
+              </button>
+              <button
+                onClick={() => aggiornaStatoRichiesta(r, "rifiutato")}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 6,
+                  border: "1px solid #e4e7ec",
+                  backgroundColor: "transparent",
+                  color: "#666",
+                  cursor: "pointer",
+                }}
+              >
+                Rifiuta
+              </button>
             </div>
-          </div>
-        )}
-        {campiDaMostrare.map((f) => (
-          <div key={f.campo} style={{ marginBottom: 10 }}>
-            <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>{f.label}</label>
-            <input
-              type={f.tipo || "text"}
-              value={(form as any)[f.campo]}
-              onChange={(e) => aggiorna(f.campo, e.target.value)}
-              required={f.obbligatorio}
-              style={{ width: "100%", padding: 8 }}
-            />
           </div>
         ))}
+      </div>
 
-        <div style={{ marginTop: 16, marginBottom: 8 }}>
-          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13 }}>
-            <input
-              type="checkbox"
-              checked={consensoPrivacy}
-              onChange={(e) => setConsensoPrivacy(e.target.checked)}
-              style={{ marginTop: 2 }}
-            />
-            <span>Acconsento al trattamento dei dati personali ai sensi del Regolamento (UE) 2016/679 (GDPR). *</span>
-          </label>
-        </div>
-
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13 }}>
-            <input
-              type="checkbox"
-              checked={consensoAltro}
-              onChange={(e) => setConsensoAltro(e.target.checked)}
-              style={{ marginTop: 2 }}
-            />
-            <span>Accetto le condizioni generali del servizio.</span>
-          </label>
-        </div>
-
-        {errore && <p style={{ color: "red" }}>{errore}</p>}
-
-        <button type="submit" disabled={invioInCorso} style={{ padding: "10px 20px" }}>
-          {invioInCorso ? "Invio in corso..." : isLavoratore ? "Crea account gratuito" : "Invia richiesta"}
-        </button>
-      </form>
-
-      <p style={{ marginTop: 20, fontSize: 14 }}>
-        Hai già un account?{" "}
-        <a href="/login" style={{ color: "#1a73e8" }}>
-          Accedi
-        </a>
+      <h2 style={{ fontSize: 17, marginBottom: 4 }}>Account esistenti</h2>
+      <p style={{ color: "#666", fontSize: 14 }}>
+        Gestisci piano, ruolo, dati azienda e data abbonamento di ogni account. Il codice azienda
+        si aggiorna da solo quando salvi, se nome azienda e data abbonamento sono presenti.
       </p>
+
+      <input
+        placeholder="Cerca per email o nome azienda..."
+        value={ricerca}
+        onChange={(e) => setRicerca(e.target.value)}
+        style={{ padding: 8, width: "100%", maxWidth: 400, marginBottom: 16, borderRadius: 6, border: "1px solid #d0d5dd" }}
+      />
+
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+          <thead>
+            <tr style={{ textAlign: "left", borderBottom: "2px solid #e4e7ec" }}>
+              <th style={{ padding: 8 }}>Email</th>
+              <th style={{ padding: 8 }}>Nome azienda</th>
+              <th style={{ padding: 8 }}>Nome utente</th>
+              <th style={{ padding: 8 }}>Ruolo</th>
+              <th style={{ padding: 8 }}>Tipo account</th>
+              <th style={{ padding: 8 }}>Piano</th>
+              <th style={{ padding: 8 }}>Data abbonamento</th>
+              <th style={{ padding: 8 }}>Codice azienda</th>
+              <th style={{ padding: 8 }}>Autorità controllo</th>
+              <th style={{ padding: 8 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {profiliFiltrati.map((p) => (
+              <tr key={p.id} style={{ borderBottom: "1px solid #eaf1fc" }}>
+                <td style={{ padding: 8 }}>{p.email}</td>
+                <td style={{ padding: 8 }}>
+                  <input
+                    value={p.impresa ?? ""}
+                    onChange={(e) => aggiornaCampo(p.id, "impresa", e.target.value)}
+                    style={{ padding: 6, width: 140, borderRadius: 6, border: "1px solid #d0d5dd" }}
+                  />
+                </td>
+                <td style={{ padding: 8 }}>
+                  <input
+                    value={p.nome_utente ?? ""}
+                    onChange={(e) => aggiornaCampo(p.id, "nome_utente", e.target.value)}
+                    style={{ padding: 6, width: 120, borderRadius: 6, border: "1px solid #d0d5dd" }}
+                  />
+                </td>
+                <td style={{ padding: 8 }}>
+                  <select
+                    value={p.ruolo}
+                    onChange={(e) => aggiornaCampo(p.id, "ruolo", e.target.value)}
+                    style={{ padding: 6, borderRadius: 6, border: "1px solid #d0d5dd" }}
+                  >
+                    {RUOLI.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td style={{ padding: 8 }}>
+                  <select
+                    value={p.tipo_account ?? ""}
+                    onChange={(e) => aggiornaCampo(p.id, "tipo_account", e.target.value || null)}
+                    style={{ padding: 6, borderRadius: 6, border: "1px solid #d0d5dd" }}
+                  >
+                    {TIPI_ACCOUNT.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td style={{ padding: 8 }}>
+                  <select
+                    value={p.piano_id ?? ""}
+                    onChange={(e) => aggiornaCampo(p.id, "piano_id", e.target.value || null)}
+                    style={{ padding: 6, borderRadius: 6, border: "1px solid #d0d5dd" }}
+                  >
+                    <option value="">—</option>
+                    {piani.map((pi) => (
+                      <option key={pi.id} value={pi.id}>
+                        {pi.nome}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td style={{ padding: 8 }}>
+                  <input
+                    type="date"
+                    value={p.data_abbonamento ?? ""}
+                    onChange={(e) => aggiornaCampo(p.id, "data_abbonamento", e.target.value || null)}
+                    style={{ padding: 6, borderRadius: 6, border: "1px solid #d0d5dd" }}
+                  />
+                </td>
+                <td style={{ padding: 8, fontWeight: 600 }}>{p.codice_azienda ?? "—"}</td>
+                <td style={{ padding: 8, textAlign: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={!!p.autorita_controllo}
+                    onChange={(e) => aggiornaCampo(p.id, "autorita_controllo", e.target.checked)}
+                  />
+                </td>
+                <td style={{ padding: 8 }}>
+                  <button
+                    onClick={() => salvaRiga(p)}
+                    disabled={salvataggioId === p.id}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 6,
+                      border: "1px solid #d6e6fb",
+                      backgroundColor: "#eef4fd",
+                      color: "#1a73e8",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {salvataggioId === p.id ? "..." : "Salva"}
+                  </button>
+                  {messaggioId === `ok:${p.id}` && <span style={{ color: "green", marginLeft: 6 }}>✓</span>}
+                  {messaggioId?.startsWith(`errore:${p.id}`) && (
+                    <span style={{ color: "red", marginLeft: 6, fontSize: 12 }}>
+                      {messaggioId.split(":").slice(2).join(":")}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {profiliFiltrati.length === 0 && <p style={{ color: "#666", marginTop: 16 }}>Nessun account trovato.</p>}
+      </div>
     </div>
   );
 }
