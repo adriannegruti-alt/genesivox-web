@@ -11,7 +11,39 @@ type Cantiere = {
   comune: string | null;
   provincia: string | null;
   archiviato: boolean;
+  caratteristiche: string[] | null;
 };
+
+// Cosa c'è in cantiere: accende i documenti "condizionali" collegati
+const CARATTERISTICHE = [
+  { valore: "ponteggi", etichetta: "Ponteggi o lavori in quota" },
+  { valore: "macchine", etichetta: "Gru, escavatori o piattaforme elevabili" },
+  { valore: "interferenze", etichetta: "Più imprese in cantiere contemporaneamente" },
+  { valore: "appalto_pubblico", etichetta: "Appalto pubblico" },
+  { valore: "sostanze", etichetta: "Sostanze pericolose (vernici, solventi, resine...)" },
+  { valore: "strutture", etichetta: "Opere strutturali (cemento armato, acciaio, strutture temporanee)" },
+];
+
+function SelettoreCaratteristiche({ valore, onChange }: { valore: string[]; onChange: (v: string[]) => void }) {
+  return (
+    <div style={{ margin: "8px 0", padding: 10, background: "#f7fafe", border: "1px solid #e1eafb", borderRadius: 6 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Cosa c'è in questo cantiere? (accende i documenti collegati)</div>
+      {CARATTERISTICHE.map((c) => (
+        <label key={c.valore} style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
+          <input
+            type="checkbox"
+            checked={valore.includes(c.valore)}
+            onChange={(e) =>
+              onChange(e.target.checked ? [...valore, c.valore] : valore.filter((x) => x !== c.valore))
+            }
+            style={{ marginRight: 6 }}
+          />
+          {c.etichetta}
+        </label>
+      ))}
+    </div>
+  );
+}
 
 export default function CantieriPage() {
   const [cantieri, setCantieri] = useState<Cantiere[]>([]);
@@ -19,6 +51,7 @@ export default function CantieriPage() {
   const [indirizzo, setIndirizzo] = useState("");
   const [comune, setComune] = useState("");
   const [provincia, setProvincia] = useState("");
+  const [nuoveCar, setNuoveCar] = useState<string[]>([]);
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
 
@@ -27,11 +60,12 @@ export default function CantieriPage() {
   const [indirizzoModifica, setIndirizzoModifica] = useState("");
   const [comuneModifica, setComuneModifica] = useState("");
   const [provinciaModifica, setProvinciaModifica] = useState("");
+  const [carModifica, setCarModifica] = useState<string[]>([]);
 
   async function caricaCantieri() {
     const { data, error } = await supabase
       .from("cantieri")
-      .select("id, nome, indirizzo, comune, provincia, archiviato")
+      .select("id, nome, indirizzo, comune, provincia, archiviato, caratteristiche")
       .eq("archiviato", false)
       .order("creato_il", { ascending: false });
     if (!error && data) setCantieri(data);
@@ -54,6 +88,7 @@ export default function CantieriPage() {
       indirizzo,
       comune: comune || null,
       provincia: provincia || null,
+      caratteristiche: nuoveCar,
       creato_da: userData.user.id,
     });
 
@@ -66,6 +101,7 @@ export default function CantieriPage() {
     setIndirizzo("");
     setComune("");
     setProvincia("");
+    setNuoveCar([]);
     caricaCantieri();
   }
 
@@ -75,6 +111,7 @@ export default function CantieriPage() {
     setIndirizzoModifica(c.indirizzo ?? "");
     setComuneModifica(c.comune ?? "");
     setProvinciaModifica(c.provincia ?? "");
+    setCarModifica(c.caratteristiche ?? []);
   }
 
   async function salvaModifica(id: string) {
@@ -85,6 +122,7 @@ export default function CantieriPage() {
         indirizzo: indirizzoModifica,
         comune: comuneModifica || null,
         provincia: provinciaModifica || null,
+        caratteristiche: carModifica,
       })
       .eq("id", id)
       .select("id");
@@ -184,6 +222,7 @@ export default function CantieriPage() {
             style={{ flex: 1, padding: 8 }}
           />
         </div>
+        <SelettoreCaratteristiche valore={nuoveCar} onChange={setNuoveCar} />
         {errore && <p style={{ color: "red" }}>{errore}</p>}
         <button type="submit" style={{ padding: "8px 16px" }}>Crea cantiere</button>
       </form>
@@ -219,6 +258,7 @@ export default function CantieriPage() {
                   style={{ flex: 1, padding: 6 }}
                 />
               </div>
+              <SelettoreCaratteristiche valore={carModifica} onChange={setCarModifica} />
               <button onClick={() => salvaModifica(c.id)} style={{ padding: "4px 12px", marginRight: 8 }}>
                 Salva
               </button>
