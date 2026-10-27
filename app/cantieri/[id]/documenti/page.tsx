@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
-type TipoDocumento = { id: string; nome: string; obbligatorio: boolean };
+type TipoDocumento = { id: string; nome: string; obbligatorio: boolean; caratteristica: string | null };
 type Documento = { id: string; tipo_documento: string };
 
 export default function DocumentiCantierePage() {
@@ -13,6 +13,7 @@ export default function DocumentiCantierePage() {
   const cantiereId = params.id as string;
 
   const [cantiere, setCantiere] = useState<any>(null);
+  const [caratteristiche, setCaratteristiche] = useState<string[]>([]);
   const [mieiRuoli, setMieiRuoli] = useState<string[]>([]);
   const [tipiRichiesti, setTipiRichiesti] = useState<TipoDocumento[]>([]);
   const [documentiCaricati, setDocumentiCaricati] = useState<Documento[]>([]);
@@ -24,8 +25,9 @@ export default function DocumentiCantierePage() {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) return;
 
-    const { data: c } = await supabase.from("cantieri").select("id, nome").eq("id", cantiereId).single();
+    const { data: c } = await supabase.from("cantieri").select("id, nome, caratteristiche").eq("id", cantiereId).single();
     setCantiere(c);
+    setCaratteristiche(c?.caratteristiche || []);
 
     const { data: membro } = await supabase
       .from("cantiere_membri")
@@ -46,7 +48,7 @@ export default function DocumentiCantierePage() {
 
     const { data: tipi } = await supabase
       .from("tipi_documento")
-      .select("id, nome, obbligatorio")
+      .select("id, nome, obbligatorio, caratteristica")
       .in("ruolo", tuttiIRuoli)
       .order("obbligatorio", { ascending: false });
 
@@ -71,12 +73,22 @@ export default function DocumentiCantierePage() {
   if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
   if (errore && mieiRuoli.length === 0) return <p style={{ padding: 24, color: "red" }}>{errore}</p>;
 
+  // Stato di ogni documento per QUESTO cantiere
+  function stato(t: TipoDocumento): "obbligatorio" | "richiesto" | "non_richiesto" | "condizionale" {
+    if (t.obbligatorio) return "obbligatorio";
+    if (t.caratteristica) return caratteristiche.includes(t.caratteristica) ? "richiesto" : "non_richiesto";
+    return "condizionale";
+  }
+  const ordine = { obbligatorio: 0, richiesto: 1, condizionale: 2, non_richiesto: 3 };
+  const tipiOrdinati = [...tipiRichiesti].sort((a, b) => ordine[stato(a)] - ordine[stato(b)]);
+
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 700 }}>
       <h1>Documenti — {cantiere?.nome}</h1>
       <p style={{ color: "#666" }}>I tuoi ruoli in questo cantiere: <strong>{mieiRuoli.join(", ")}</strong></p>
 
-      {tipiRichiesti.map((tipo) => {
+      {tipiOrdinati.map((tipo) => {
+        const st = stato(tipo);
         const numeroFile = documentiCaricati.filter((d) => d.tipo_documento === tipo.nome).length;
         return (
           <Link
@@ -92,17 +104,21 @@ export default function DocumentiCantierePage() {
               borderRadius: 8,
               textDecoration: "none",
               color: "inherit",
+              opacity: st === "non_richiesto" ? 0.55 : 1,
             }}
           >
             <div>
               <strong>{tipo.nome}</strong>{" "}
-              {tipo.obbligatorio ? (
-                <span style={{ color: "#c0392b", fontSize: 12 }}>(obbligatorio)</span>
-              ) : (
-                <span style={{ color: "#888", fontSize: 12 }}>(condizionale)</span>
+              {st === "obbligatorio" && <span style={{ color: "#c0392b", fontSize: 12 }}>(obbligatorio)</span>}
+              {st === "richiesto" && (
+                <span style={{ color: "#c0392b", fontSize: 12 }}>(richiesto per questo cantiere)</span>
               )}
-              <div style={{ fontSize: 13, color: numeroFile > 0 ? "green" : "#c0392b" }}>
-                {numeroFile > 0 ? `${numeroFile} file caricati` : "Mancante"}
+              {st === "condizionale" && <span style={{ color: "#888", fontSize: 12 }}>(condizionale)</span>}
+              {st === "non_richiesto" && (
+                <span style={{ color: "#888", fontSize: 12 }}>(non richiesto per questo cantiere)</span>
+              )}
+              <div style={{ fontSize: 13, color: numeroFile > 0 ? "green" : st === "non_richiesto" ? "#888" : "#c0392b" }}>
+                {numeroFile > 0 ? `${numeroFile} file caricati` : st === "non_richiesto" ? "Non necessario" : "Mancante"}
               </div>
             </div>
             <span style={{ color: "#999" }}>→</span>
