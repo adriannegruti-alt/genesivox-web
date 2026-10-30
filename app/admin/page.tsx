@@ -149,18 +149,45 @@ export default function AdminPage() {
   async function aggiornaStatoRichiesta(richiesta: Richiesta, stato: "approvato" | "rifiutato") {
     if (stato === "approvato") {
       // Copia impresa, nome utente e attività nel profilo collegato (trovato per email).
-      // Il profilo deve già esistere: l'utente Supabase Auth va creato PRIMA di premere Approvata.
-      const { data: profiloEsistente } = await supabase
-        .from("profili")
-        .select("id")
-        .eq("email", richiesta.email)
-        .maybeSingle();
+      const cercaProfilo = () =>
+        supabase
+          .from("profili")
+          .select("id")
+          .ilike("email", richiesta.email.trim().replace(/[\\%_]/g, "\\$&"))
+          .maybeSingle();
 
+      let { data: profiloEsistente } = await cercaProfilo();
+
+      // Se il login non esiste ancora lo crea il sistema e invia al cliente l'email per scegliere la password.
       if (!profiloEsistente) {
-        alert(
-          "Non trovo ancora nessun account con questa email. Crea prima il login su Supabase (Authentication → Add user) con la stessa email, poi riprova ad approvare."
+        const conferma = confirm(
+          `Creare l'account per ${richiesta.nome} ${richiesta.cognome} (${richiesta.email.trim().toLowerCase()}) e inviargli l'email per scegliere la password?`
         );
-        return;
+        if (!conferma) return;
+
+        const { data: sessione } = await supabase.auth.getSession();
+        const risposta = await fetch("/api/admin/crea-login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sessione.session?.access_token ?? ""}`,
+          },
+          body: JSON.stringify({ email: richiesta.email, nome: richiesta.nome }),
+        });
+        const esito = await risposta.json().catch(() => ({}));
+        if (!risposta.ok) {
+          alert("Non sono riuscito a creare l'account: " + (esito.error || "errore sconosciuto"));
+          return;
+        }
+        if (esito.creato && esito.emailInviata === false) {
+          alert("Account creato, ma l'email non è partita. Chiedi al cliente di usare \"Password dimenticata?\" nella pagina di accesso.");
+        }
+
+        ({ data: profiloEsistente } = await cercaProfilo());
+        if (!profiloEsistente) {
+          alert("Account creato, ma il profilo non è ancora visibile. Riprova tra qualche secondo.");
+          return;
+        }
       }
 
       const aggiornamentoProfilo: Record<string, any> = {
@@ -270,10 +297,9 @@ export default function AdminPage() {
           Richieste in attesa di approvazione{richieste.length > 0 ? ` (${richieste.length})` : ""}
         </h2>
         <p style={{ color: "#666", fontSize: 13, marginTop: 0 }}>
-          Arrivano dalla pagina pubblica "Crea Account". Per attivarle: copia l'email qui sotto,
-          su Supabase vai in Authentication → Users → Invite user e incolla l'email (il cliente riceve
-          un'email per scegliere la propria password), poi premi "Approvata": impresa, nome utente,
-          attività e tipo account vengono copiati in automatico sul profilo.
+          Arrivano dalla pagina pubblica "Crea Account". Per attivarle premi "Approva e crea
+          account": il sistema crea il login, invia al cliente l'email per scegliere la password e copia
+          impresa, nome utente, attività, tipo account e ruolo sul profilo.
         </p>
 
         {richieste.length === 0 && <p style={{ color: "#8a8f98", fontSize: 13 }}>Nessuna richiesta in attesa.</p>}
@@ -314,7 +340,7 @@ export default function AdminPage() {
                   cursor: "pointer",
                 }}
               >
-                Approvata (login già creato)
+                Approva e crea account
               </button>
               <button
                 onClick={() => aggiornaStatoRichiesta(r, "rifiutato")}
