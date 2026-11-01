@@ -85,7 +85,7 @@ export default function CreaAccountPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: form.email,
+          email: form.email.trim().toLowerCase(),
           password: form.parola,
           nome: form.nome,
           cognome: form.cognome,
@@ -117,7 +117,7 @@ export default function CreaAccountPage() {
       piva: form.piva || null,
       codice_fiscale: form.codiceFiscale || null,
       indirizzo: form.indirizzo || null,
-      email: form.email,
+      email: form.email.trim().toLowerCase(),
       cellulare: form.cellulare || null,
       consenso_privacy: consensoPrivacy,
       consenso_altro: consensoAltro,
