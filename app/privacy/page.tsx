@@ -2,7 +2,7 @@ export default function PrivacyPage() {
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 800, margin: "0 auto", lineHeight: 1.6 }}>
       <h1>Informativa sulla privacy</h1>
-      <p style={{ color: "#666" }}>Ultimo aggiornamento: {new Date().toLocaleDateString("it-IT")}</p>
+      <p style={{ color: "#666" }}>Ultimo aggiornamento: 3 novembre 2026</p>
 
       <h2>1. Titolare del trattamento</h2>
       <p>
@@ -65,6 +65,10 @@ export default function PrivacyPage() {
       <p>
         La piattaforma utilizza esclusivamente cookie tecnici necessari a mantenere la sessione di accesso. Non
         utilizziamo cookie di profilazione o di marketing.
+      </p>
+
+      <p>
+        Le regole di utilizzo del servizio sono nei <a href="/termini">Termini di utilizzo</a>.
       </p>
 
       <h2>9. Modifiche a questa informativa</h2>
