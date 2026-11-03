@@ -37,6 +37,7 @@ export default function CreaAccountPage() {
   const [nomeUtenteModificatoAMano, setNomeUtenteModificatoAMano] = useState(false);
   const [consensoPrivacy, setConsensoPrivacy] = useState(false);
   const [consensoAltro, setConsensoAltro] = useState(false);
+  const [consensoClausole, setConsensoClausole] = useState(false);
   const [inviato, setInviato] = useState(false);
   const [lavoratoreCreatoSubito, setLavoratoreCreatoSubito] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
@@ -62,6 +63,11 @@ export default function CreaAccountPage() {
 
     if (!consensoPrivacy) {
       setErrore("Devi accettare il trattamento dei dati personali per proseguire.");
+      return;
+    }
+
+    if (!consensoAltro || !consensoClausole) {
+      setErrore("Per proseguire devi accettare i Termini di utilizzo e approvare le clausole specifiche.");
       return;
     }
 
@@ -120,7 +126,7 @@ export default function CreaAccountPage() {
       email: form.email.trim().toLowerCase(),
       cellulare: form.cellulare || null,
       consenso_privacy: consensoPrivacy,
-      consenso_altro: consensoAltro,
+      consenso_altro: consensoAltro && consensoClausole,
       tipo_account: isProfessionista ? null : tipoAccount,
       ruolo_richiesto: isProfessionista ? ruoloProfessionista : null,
     });
@@ -351,7 +357,27 @@ export default function CreaAccountPage() {
               onChange={(e) => setConsensoAltro(e.target.checked)}
               style={{ marginTop: 2 }}
             />
-            <span>Accetto le condizioni generali del servizio.</span>
+            <span>
+              Ho letto e accetto i{" "}
+              <a href="/termini" target="_blank" rel="noreferrer">Termini di utilizzo</a> e l&apos;
+              <a href="/privacy" target="_blank" rel="noreferrer">Informativa privacy</a>. *
+            </span>
+          </label>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={consensoClausole}
+              onChange={(e) => setConsensoClausole(e.target.checked)}
+              style={{ marginTop: 2 }}
+            />
+            <span>
+              Approvo specificamente, ai sensi degli artt. 1341 e 1342 c.c., le clausole dei Termini di utilizzo sui limiti
+              di responsabilità, sulla sospensione dell&apos;account, sul recesso e sulla legge applicabile e foro
+              competente (articoli 9, 10, 11 e 12). *
+            </span>
           </label>
         </div>
 
