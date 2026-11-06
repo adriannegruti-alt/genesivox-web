@@ -116,18 +116,24 @@ export default function AttivitaPage() {
     return persone.find((p) => p.id === id)?.email ?? "altro utente";
   }
 
-  async function avvisa(attivitaId: string, evento: "assegnata" | "chiusa") {
+  // Restituisce una frase che dice com'è andato l'avviso (mai "avvisata" se non è vero).
+  async function avvisa(attivitaId: string, evento: "assegnata" | "chiusa"): Promise<string> {
     try {
       const { data: sessione } = await supabase.auth.getSession();
       const token = sessione?.session?.access_token;
-      if (!token) return;
-      await fetch("/api/attivita/notifica", {
+      if (!token) return "L'avviso non è partito: sessione scaduta.";
+      const risposta = await fetch("/api/attivita/notifica", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ attivitaId, evento }),
       });
+      const json = await risposta.json().catch(() => null);
+      if (!risposta.ok || !json?.ok) return `L'avviso non è partito (${json?.errore || "errore " + risposta.status}).`;
+      if (!json.avvisati) return `Nessun avviso inviato: ${json.motivo || "nessun destinatario"}.`;
+      if (json.erroreEmail) return `Avviso non inviato per email (${json.erroreEmail}).`;
+      return `Avviso inviato a ${json.destinatario}.`;
     } catch {
-      // l'avviso è un extra: se fallisce, l'attività è comunque salvata
+      return "L'avviso non è partito: controlla la connessione.";
     }
   }
 
@@ -160,13 +166,14 @@ export default function AttivitaPage() {
       setErrore(error?.message || "Non è stato possibile salvare.");
       return;
     }
-    if (assegnataA && assegnataA !== mioId) await avvisa(data.id, "assegnata");
+    let esitoAvviso = "";
+    if (assegnataA && assegnataA !== mioId) esitoAvviso = await avvisa(data.id, "assegnata");
     setTitolo("");
     setDescrizione("");
     setScadenza("");
     setAssegnataA("");
     setMostraForm(false);
-    setMessaggio(assegnataA && assegnataA !== mioId ? "Salvata. La persona assegnata è stata avvisata." : "Salvata.");
+    setMessaggio(esitoAvviso ? `Salvata. ${esitoAvviso}` : "Salvata.");
     carica();
   }
 
@@ -196,7 +203,7 @@ export default function AttivitaPage() {
       setErrore("Non hai i permessi per modificare questa voce.");
       return;
     }
-    if (nuovo === "chiusa") await avvisa(r.id, "chiusa");
+    if (nuovo === "chiusa") setMessaggio(`Chiusa. ${await avvisa(r.id, "chiusa")}`);
     carica();
   }
 
