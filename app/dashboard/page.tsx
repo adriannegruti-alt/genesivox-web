@@ -104,6 +104,8 @@ export default function DashboardPage() {
   const [presentiOggi, setPresentiOggi] = useState<number | null>(null);
   const [lavoratoriAttivi, setLavoratoriAttivi] = useState<number | null>(null);
   const [scadenze, setScadenze] = useState<Scadenza[]>([]);
+  const [attivitaAperte, setAttivitaAperte] = useState<number | null>(null);
+  const [attivitaInRitardo, setAttivitaInRitardo] = useState(0);
 
   async function carica() {
     setCaricamento(true);
@@ -161,6 +163,17 @@ export default function DashboardPage() {
       .select("id", { count: "exact", head: true })
       .eq("attivo", true);
     setLavoratoriAttivi(errLav ? null : nLav ?? 0);
+
+    const { data: attAperte, error: errAtt } = await supabase
+      .from("attivita_cantiere")
+      .select("id, scadenza")
+      .neq("stato", "chiusa");
+    if (errAtt) {
+      setAttivitaAperte(null);
+    } else {
+      setAttivitaAperte((attAperte || []).length);
+      setAttivitaInRitardo((attAperte || []).filter((a: any) => a.scadenza && a.scadenza < oggi).length);
+    }
 
     const { data: docs } = await supabase
       .from("documenti_lavoratore")
@@ -232,6 +245,15 @@ export default function DashboardPage() {
                 valore={presentiOggi ?? "—"}
                 nota={presentiOggi === 0 ? "Nessun ingresso registrato oggi" : "Ingressi di oggi senza uscita"}
               />
+              {attivitaAperte !== null && attivitaAperte > 0 && (
+                <Card
+                  titolo="Attività e non conformità aperte"
+                  valore={attivitaAperte}
+                  colore={attivitaInRitardo > 0 ? "#c0392b" : "#1a3c6e"}
+                  nota={attivitaInRitardo > 0 ? `${attivitaInRitardo} in ritardo` : "Nessuna in ritardo"}
+                  href="/cantieri"
+                />
+              )}
               {mostraPersonale && (
                 <>
                   <Card titolo="Lavoratori attivi" valore={lavoratoriAttivi ?? "—"} href="/lavoratori" />
