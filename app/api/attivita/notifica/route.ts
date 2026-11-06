@@ -64,8 +64,11 @@ export async function POST(richiesta: NextRequest) {
   let destinatarioId: string | null = null;
   if (evento === "assegnata") destinatarioId = att.assegnata_a;
   if (evento === "chiusa") destinatarioId = att.creato_da;
-  if (!destinatarioId || destinatarioId === utente.id) {
-    return NextResponse.json({ ok: true, avvisati: 0 });
+  if (!destinatarioId) {
+    return NextResponse.json({ ok: true, avvisati: 0, motivo: "nessuna persona da avvisare (non assegnata)" });
+  }
+  if (destinatarioId === utente.id) {
+    return NextResponse.json({ ok: true, avvisati: 0, motivo: "sei tu la persona da avvisare" });
   }
 
   const { data: dest } = await admin.from("profili").select("email").eq("id", destinatarioId).maybeSingle();
@@ -101,9 +104,13 @@ export async function POST(richiesta: NextRequest) {
     </div>`;
 
   let inviate = 0;
+  let erroreEmail = "";
   if (dest?.email) {
     const esito = await inviaEmail(dest.email, oggetto, html);
     if (esito.ok) inviate += 1;
+    else erroreEmail = esito.errore || "invio non riuscito";
+  } else {
+    erroreEmail = "la persona da avvisare non ha un'email nel profilo";
   }
   const push = await inviaPush(admin, [destinatarioId], {
     titolo: evento === "assegnata" ? `${etichetta} assegnata a te` : `${etichetta} chiusa`,
@@ -111,5 +118,5 @@ export async function POST(richiesta: NextRequest) {
     url: link,
   });
 
-  return NextResponse.json({ ok: true, avvisati: 1, inviate, push });
+  return NextResponse.json({ ok: true, avvisati: 1, inviate, push, destinatario: dest?.email || null, erroreEmail });
 }
