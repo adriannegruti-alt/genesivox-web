@@ -252,6 +252,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               Accessi ai dati
             </Link>
           )}
+          {!autoritaControllo && (
+            <Link
+              href="/fascicolo"
+              onClick={() => setMenuAperto(null)}
+              style={stileLinkMenu(!!pathname?.startsWith("/fascicolo"))}
+            >
+              Fascicolo
+            </Link>
+          )}
           {isAdmin && (
             <Link
               href="/admin"
