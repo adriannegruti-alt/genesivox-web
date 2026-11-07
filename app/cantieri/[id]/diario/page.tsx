@@ -57,6 +57,14 @@ export default function DiarioPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [salvataggio, setSalvataggio] = useState(false);
 
+  // Esportazione in PDF (stampa del browser: "Salva come PDF")
+  const [nomeCantiere, setNomeCantiere] = useState("");
+  const [indirizzoCantiere, setIndirizzoCantiere] = useState("");
+  const [dal, setDal] = useState("");
+  const [al, setAl] = useState("");
+  const [esportando, setEsportando] = useState(false);
+  const [vociStampa, setVociStampa] = useState<Voce[]>([]);
+
   async function token(): Promise<string | null> {
     const { data: s } = await supabase.auth.getSession();
     return s?.session?.access_token ?? null;
@@ -86,6 +94,10 @@ export default function DiarioPage() {
 
     const { data: puo } = await supabase.rpc("puo_gestire_attivita", { cid: cantiereId });
     setPuoScrivere(puo === true);
+
+    const { data: cant } = await supabase.from("cantieri").select("nome, indirizzo").eq("id", cantiereId).maybeSingle();
+    setNomeCantiere(cant?.nome ?? "");
+    setIndirizzoCantiere(cant?.indirizzo ?? "");
 
     const { data: elenco, error } = await supabase
       .from("diario_cantiere")
@@ -231,6 +243,32 @@ export default function DiarioPage() {
     carica();
   }
 
+  async function esporta() {
+    setErrore(null);
+    setMessaggio(null);
+    const scelte = voci
+      .filter((v) => (!dal || v.data >= dal) && (!al || v.data <= al))
+      .sort((a, b) => (a.data === b.data ? a.creato_il.localeCompare(b.creato_il) : a.data.localeCompare(b.data)));
+    if (scelte.length === 0) {
+      setErrore("Nessuna voce nel periodo scelto.");
+      return;
+    }
+    setEsportando(true);
+    setVociStampa(scelte);
+    // Link foto freschi (durano 10 minuti): li rigeneriamo subito prima di stampare
+    await caricaUrls(scelte.flatMap((v) => v.foto));
+    // Aspetta che le immagini siano caricate (al massimo 8 secondi)
+    const inizio = Date.now();
+    await new Promise((r) => setTimeout(r, 400));
+    while (Date.now() - inizio < 8000) {
+      const imgs = Array.from(document.querySelectorAll(".stampa-diario img")) as HTMLImageElement[];
+      if (imgs.every((i) => i.complete)) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    setEsportando(false);
+    window.print();
+  }
+
   if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
 
   return (
@@ -316,6 +354,25 @@ export default function DiarioPage() {
         </form>
       )}
 
+      {voci.length > 0 && (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 14, fontSize: 13 }}>
+          <label>
+            Dal
+            <br />
+            <input type="date" value={dal} onChange={(e) => setDal(e.target.value)} style={{ padding: 5 }} />
+          </label>
+          <label>
+            Al
+            <br />
+            <input type="date" value={al} onChange={(e) => setAl(e.target.value)} style={{ padding: 5 }} />
+          </label>
+          <button onClick={esporta} disabled={esportando} style={{ ...stilePulsante, padding: "7px 12px" }}>
+            {esportando ? "Preparazione..." : "📄 Esporta in PDF"}
+          </button>
+          <span style={{ color: "#888" }}>Lascia vuoto per esportare tutto. Nella finestra che si apre scegli &quot;Salva come PDF&quot;.</span>
+        </div>
+      )}
+
       {errore && <p style={{ color: "red" }}>{errore}</p>}
       {messaggio && <p style={{ color: "#16a34a" }}>{messaggio}</p>}
 
@@ -356,6 +413,50 @@ export default function DiarioPage() {
           </div>
         ))
       )}
+
+      {/* Foglio per la stampa / PDF: sullo schermo è nascosto */}
+      <style>{`
+        .stampa-diario { display: none; }
+        @media print {
+          @page { size: A4 portrait; margin: 14mm; }
+          body * { visibility: hidden !important; }
+          .stampa-diario, .stampa-diario * { visibility: visible !important; }
+          .stampa-diario { display: block !important; position: absolute; left: 0; top: 0; width: 100%; color: #000; font-family: sans-serif; }
+          .stampa-voce { page-break-inside: avoid; break-inside: avoid; border-top: 1px solid #999; padding: 8px 0; margin-bottom: 6px; }
+          .stampa-foto { display: inline-block; width: 48%; margin: 1%; vertical-align: top; }
+          .stampa-foto img { width: 100%; max-height: 62mm; object-fit: cover; }
+        }
+      `}</style>
+      <div className="stampa-diario">
+        <h1 style={{ fontSize: 20, margin: "0 0 2px" }}>Diario di cantiere</h1>
+        <div style={{ fontSize: 14 }}>
+          <strong>{nomeCantiere}</strong>
+          {indirizzoCantiere ? ` — ${indirizzoCantiere}` : ""}
+        </div>
+        <div style={{ fontSize: 12, color: "#444", marginBottom: 10 }}>
+          Periodo: {dal ? formatData(dal) : "dall'inizio"} – {al ? formatData(al) : "ad oggi"} · Generato il {formatData(oggiRoma())} con GENESIVOX
+        </div>
+        {vociStampa.map((v) => (
+          <div key={v.id} className="stampa-voce">
+            <div style={{ fontWeight: 700, fontSize: 14 }}>
+              {formatData(v.data)}
+              {v.meteo ? ` · Meteo: ${v.meteo}` : ""}
+              {presenti[v.data] !== undefined ? ` · Presenze registrate: ${presenti[v.data]}` : ""}
+            </div>
+            <div style={{ fontSize: 13, whiteSpace: "pre-wrap", margin: "4px 0" }}>{v.testo}</div>
+            {v.foto.map((p) =>
+              urls[p] ? (
+                <div key={p} className="stampa-foto">
+                  <img src={urls[p]} alt="Foto del cantiere" />
+                </div>
+              ) : null
+            )}
+            <div style={{ fontSize: 11, color: "#555" }}>
+              Scritto da {v.creato_da ? autori[v.creato_da] || "un membro del cantiere" : "—"} il {formatData(v.creato_il)}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
