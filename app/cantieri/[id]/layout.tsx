@@ -96,6 +96,7 @@ export default function CantiereLayout({ children }: { children: React.ReactNode
     ...(soloLavoratore ? [] : [{ href: `/cantieri/${cantiereId}/visite`, label: "🪪 Visite ispettive" }]),
     ...(soloLavoratore ? [] : [{ href: `/cantieri/${cantiereId}/verbali`, label: "📝 Verbali CSE/CSP" }]),
     ...(soloLavoratore ? [] : [{ href: `/cantieri/${cantiereId}/attivita`, label: "✅ Attività e non conformità" }]),
+    ...(soloLavoratore ? [] : [{ href: `/cantieri/${cantiereId}/diario`, label: "📓 Diario di cantiere" }]),
     ...(puoVedereDisegni
       ? [{ href: `/cantieri/${cantiereId}/disegni-esecuzione`, label: "📐 Disegni di esecuzione" }]
       : []),
