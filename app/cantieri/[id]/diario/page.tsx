@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { comprimiImmagine, validaFile } from "@/lib/caricamentoFile";
+import {
+  accoda, elencaCoda, eErroreDiRete, eseguiSincronizzazione, inOffline, iscriviCoda, leggiCache,
+  nuovoId, riprovaOperazione, rimuoviOperazione, salvaCache, utenteLocale, type Operazione,
+} from "@/lib/codaOffline";
 
 type Voce = {
   id: string;
@@ -56,6 +60,9 @@ export default function DiarioPage() {
   const [testo, setTesto] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [salvataggio, setSalvataggio] = useState(false);
+  const [inCoda, setInCoda] = useState<Operazione[]>([]);
+  const [datiVecchi, setDatiVecchi] = useState<number | null>(null);
+  const conteggioPrecedente = useRef(0);
 
   // Esportazione in PDF (stampa del browser: "Salva come PDF")
   const [nomeCantiere, setNomeCantiere] = useState("");
@@ -87,17 +94,22 @@ export default function DiarioPage() {
     }
   }
 
-  async function carica() {
-    setCaricamento(true);
-    const { data: userData } = await supabase.auth.getUser();
-    setMioId(userData?.user?.id ?? null);
+  async function aggiornaCoda(): Promise<number> {
+    const tutte = await elencaCoda(cantiereId);
+    const mie = tutte.filter((o) => o.tipo === "diario_nuova");
+    setInCoda(mie);
+    return mie.length;
+  }
 
-    const { data: puo } = await supabase.rpc("puo_gestire_attivita", { cid: cantiereId });
-    setPuoScrivere(puo === true);
-
+  // Legge dal server. Restituisce false se non c'è rete (allora si usa la copia locale).
+  async function caricaDaRete(uid: string | null): Promise<boolean> {
+    const { data: puo, error: errPuo } = await supabase.rpc("puo_gestire_attivita", { cid: cantiereId });
+    if (errPuo) {
+      if (eErroreDiRete(errPuo)) return false;
+      setErrore(errPuo.message);
+      return true;
+    }
     const { data: cant } = await supabase.from("cantieri").select("nome, indirizzo").eq("id", cantiereId).maybeSingle();
-    setNomeCantiere(cant?.nome ?? "");
-    setIndirizzoCantiere(cant?.indirizzo ?? "");
 
     const { data: elenco, error } = await supabase
       .from("diario_cantiere")
@@ -106,14 +118,12 @@ export default function DiarioPage() {
       .order("data", { ascending: false })
       .order("creato_il", { ascending: false });
     if (error) {
+      if (eErroreDiRete(error)) return false;
       setErrore(error.message);
-      setCaricamento(false);
-      return;
+      return true;
     }
     const lista = ((elenco || []) as any[]).map((v) => ({ ...v, foto: Array.isArray(v.foto) ? v.foto : [] })) as Voce[];
-    setVoci(lista);
 
-    // Autori
     const { data: membri } = await supabase
       .from("cantiere_membri")
       .select("profilo_id, profili!cantiere_membri_profilo_id_fkey(email)")
@@ -122,9 +132,8 @@ export default function DiarioPage() {
     (membri || []).forEach((m: any) => {
       if (m.profilo_id) mappa[m.profilo_id] = m.profili?.email ?? "";
     });
-    setAutori(mappa);
 
-    // Presenze registrate nei giorni del diario (se la lettura non riesce, si omette)
+    let conteggio: Record<string, number> = {};
     const date = Array.from(new Set(lista.map((v) => v.data)));
     if (date.length > 0) {
       const { data: pres, error: errPres } = await supabase
@@ -133,20 +142,79 @@ export default function DiarioPage() {
         .eq("cantiere_id", cantiereId)
         .in("data", date);
       if (!errPres) {
-        const conteggio: Record<string, number> = {};
         (pres || []).forEach((p: any) => {
           conteggio[p.data] = (conteggio[p.data] || 0) + 1;
         });
-        setPresenti(conteggio);
       }
     }
 
+    setPuoScrivere(puo === true);
+    setNomeCantiere(cant?.nome ?? "");
+    setIndirizzoCantiere(cant?.indirizzo ?? "");
+    setVoci(lista);
+    setAutori(mappa);
+    setPresenti(conteggio);
+    setDatiVecchi(null);
+
+    // Copia locale per quando non c'è rete (senza i link delle foto, che scadono)
+    await salvaCache(`diario:${cantiereId}`, {
+      puo: puo === true,
+      nome: cant?.nome ?? "",
+      indirizzo: cant?.indirizzo ?? "",
+      voci: lista,
+      autori: mappa,
+      presenti: conteggio,
+      uid,
+    });
+
     await caricaUrls(lista.flatMap((v) => v.foto));
+    return true;
+  }
+
+  async function carica() {
+    setCaricamento(true);
+    const u = await utenteLocale();
+    setMioId(u?.id ?? null);
+
+    let fatto = false;
+    if (!inOffline()) {
+      try {
+        fatto = await caricaDaRete(u?.id ?? null);
+      } catch {
+        fatto = false;
+      }
+    }
+    if (!fatto) {
+      const c = await leggiCache<any>(`diario:${cantiereId}`);
+      if (c) {
+        setPuoScrivere(c.valore.puo === true);
+        setNomeCantiere(c.valore.nome || "");
+        setIndirizzoCantiere(c.valore.indirizzo || "");
+        setVoci(c.valore.voci || []);
+        setAutori(c.valore.autori || {});
+        setPresenti(c.valore.presenti || {});
+        setDatiVecchi(c.aggiornato);
+      } else {
+        setErrore("Sei offline e questa pagina non è mai stata aperta con connessione su questo dispositivo.");
+      }
+    }
+    conteggioPrecedente.current = await aggiornaCoda();
     setCaricamento(false);
   }
 
   useEffect(() => {
     if (cantiereId) carica();
+  }, [cantiereId]);
+
+  // Quando una voce in coda viene inviata, ricarica l'elenco
+  useEffect(() => {
+    return iscriviCoda(async () => {
+      const prima = conteggioPrecedente.current;
+      const ora = await aggiornaCoda();
+      conteggioPrecedente.current = ora;
+      if (ora < prima && !inOffline()) carica();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cantiereId]);
 
   function scegliFoto(e: React.ChangeEvent<HTMLInputElement>) {
@@ -163,15 +231,13 @@ export default function DiarioPage() {
       setErrore("Scrivi cosa è stato fatto oggi.");
       return;
     }
-    if (!mioId) return;
-    const t = await token();
-    if (!t) {
-      setErrore("Sessione scaduta: accedi di nuovo.");
+    if (!mioId) {
+      setErrore("Utente non riconosciuto: accedi di nuovo con connessione.");
       return;
     }
     setSalvataggio(true);
 
-    const caricate: string[] = [];
+    const blobs: Blob[] = [];
     for (const f of files) {
       const piccola = await comprimiImmagine(f);
       const valida = validaFile(piccola);
@@ -180,47 +246,44 @@ export default function DiarioPage() {
         setSalvataggio(false);
         return;
       }
-      const form = new FormData();
-      form.append("cantiereId", cantiereId);
-      form.append("file", piccola);
-      try {
-        const r = await fetch("/api/diario", { method: "POST", headers: { Authorization: `Bearer ${t}` }, body: form });
-        const j = await r.json().catch(() => null);
-        if (!r.ok || !j?.ok) {
-          setErrore(`Foto "${f.name}" non caricata: ${j?.errore || "errore " + r.status}`);
-          setSalvataggio(false);
-          return;
-        }
-        caricate.push(j.percorso);
-      } catch {
-        setErrore("Caricamento foto non riuscito: controlla la connessione.");
-        setSalvataggio(false);
-        return;
-      }
+      blobs.push(piccola);
     }
 
-    const { error } = await supabase.from("diario_cantiere").insert({
-      cantiere_id: cantiereId,
-      data,
-      meteo: meteo || null,
-      testo: testo.trim(),
-      foto: caricate,
-      creato_da: mioId,
-    });
-    setSalvataggio(false);
-    if (error) {
-      setErrore(error.message);
+    try {
+      await accoda({
+        id: nuovoId(),
+        tipo: "diario_nuova",
+        cantiereId,
+        etichetta: `Diario del ${formatData(data)}`,
+        payload: { data, meteo: meteo || null, testo: testo.trim(), creato_da: mioId },
+        foto: blobs,
+      });
+    } catch {
+      setErrore("Impossibile salvare sul dispositivo (spazio esaurito o browser in modalità privata).");
+      setSalvataggio(false);
       return;
     }
+    setSalvataggio(false);
     setTesto("");
     setMeteo("");
     setFiles([]);
     setMostraForm(false);
-    setMessaggio("Voce salvata nel diario.");
-    carica();
+    conteggioPrecedente.current = await aggiornaCoda();
+
+    if (inOffline()) {
+      setMessaggio("Salvato sul dispositivo. Verrà inviato da solo appena torna la connessione.");
+    } else {
+      setMessaggio("Voce salvata nel diario.");
+      await eseguiSincronizzazione();
+      await carica();
+    }
   }
 
   async function elimina(v: Voce) {
+    if (inOffline()) {
+      setErrore("Per eliminare una voce serve la connessione.");
+      return;
+    }
     if (!window.confirm(`Eliminare la voce del ${formatData(v.data)}? Le foto collegate verranno cancellate.`)) return;
     setErrore(null);
     const { data: cancellata, error } = await supabase.from("diario_cantiere").delete().eq("id", v.id).select("id");
@@ -375,8 +438,49 @@ export default function DiarioPage() {
 
       {errore && <p style={{ color: "red" }}>{errore}</p>}
       {messaggio && <p style={{ color: "#16a34a" }}>{messaggio}</p>}
+      {datiVecchi && (
+        <p style={{ color: "#8a6d00", fontSize: 13 }}>
+          Dati salvati sul dispositivo il {new Date(datiVecchi).toLocaleString("it-IT")}. Le foto non sono visibili senza connessione.
+        </p>
+      )}
 
-      {voci.length === 0 ? (
+      {inCoda.map((o) => (
+        <div
+          key={o.id}
+          style={{
+            border: "1px dashed " + (o.stato === "errore" ? "#e0a8a1" : "#e6c76a"),
+            background: o.stato === "errore" ? "#fdf3f2" : "#fffaf0",
+            borderRadius: 10,
+            padding: 14,
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ fontWeight: 700, color: "#1a3c6e" }}>{formatData(o.payload.data)}</div>
+          <div style={{ fontSize: 13, color: "#666" }}>{o.payload.meteo ? `☁️ ${o.payload.meteo}` : ""}</div>
+          <div style={{ fontSize: 14, marginTop: 6, whiteSpace: "pre-wrap" }}>{o.payload.testo}</div>
+          <div style={{ fontSize: 12, color: o.stato === "errore" ? "#c0392b" : "#8a6d00", marginTop: 8 }}>
+            {o.stato === "errore" ? `⚠ Non inviato: ${o.ultimoErrore || "errore"}` : "⏳ In attesa di invio"}
+            {o.foto && o.foto.length > 0 ? ` · ${o.foto.length} foto` : ""}
+            {o.stato === "errore" && (
+              <>
+                <button style={{ ...stilePulsante, marginLeft: 10 }} onClick={() => riprovaOperazione(o.id)}>
+                  Riprova
+                </button>
+                <button
+                  style={{ ...stilePulsante, marginLeft: 6, color: "#c0392b" }}
+                  onClick={async () => {
+                    if (window.confirm("Scartare questa voce? Non potrà essere recuperata.")) await rimuoviOperazione(o.id);
+                  }}
+                >
+                  Scarta
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {voci.length === 0 && inCoda.length === 0 ? (
         <p style={{ color: "#888" }}>Nessuna voce nel diario.</p>
       ) : (
         voci.map((v) => (
