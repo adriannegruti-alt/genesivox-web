@@ -1,8 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import {
+  accoda, elencaCoda, eErroreDiRete, eseguiSincronizzazione, inOffline, iscriviCoda, leggiCache,
+  nuovoId, riprovaOperazione, rimuoviOperazione, salvaCache, utenteLocale, type Operazione,
+} from "@/lib/codaOffline";
 
 type Riga = {
   id: string;
@@ -17,6 +21,8 @@ type Riga = {
   creato_il: string;
   chiusa_il: string | null;
   nota_chiusura: string | null;
+  _attesa?: boolean;
+  _errore?: string;
 };
 
 function oggiRoma(): string {
@@ -67,23 +73,35 @@ export default function AttivitaPage() {
   const [assegnataA, setAssegnataA] = useState("");
   const [scadenza, setScadenza] = useState("");
   const [salvataggio, setSalvataggio] = useState(false);
+  const [inCoda, setInCoda] = useState<Operazione[]>([]);
+  const [datiVecchi, setDatiVecchi] = useState<number | null>(null);
+  const conteggioPrecedente = useRef(0);
 
-  async function carica() {
-    setCaricamento(true);
-    const { data: userData } = await supabase.auth.getUser();
-    const uid = userData?.user?.id ?? null;
-    setMioId(uid);
+  async function aggiornaCoda(): Promise<number> {
+    const tutte = await elencaCoda(cantiereId);
+    const mie = tutte.filter((o) => o.tipo === "attivita_nuova" || o.tipo === "attivita_stato");
+    setInCoda(mie);
+    return mie.length;
+  }
 
-    const { data: puo } = await supabase.rpc("puo_gestire_attivita", { cid: cantiereId });
-    setPuoCreare(puo === true);
-
+  // Legge dal server. Restituisce false se non c'è rete (allora si usa la copia locale).
+  async function caricaDaRete(uid: string | null): Promise<boolean> {
+    const { data: puo, error: errPuo } = await supabase.rpc("puo_gestire_attivita", { cid: cantiereId });
+    if (errPuo) {
+      if (eErroreDiRete(errPuo)) return false;
+      setErrore(errPuo.message);
+      return true;
+    }
     const { data: elenco, error } = await supabase
       .from("attivita_cantiere")
       .select("*")
       .eq("cantiere_id", cantiereId)
       .order("creato_il", { ascending: false });
-    if (error) setErrore(error.message);
-    else setRighe((elenco || []) as Riga[]);
+    if (error) {
+      if (eErroreDiRete(error)) return false;
+      setErrore(error.message);
+      return true;
+    }
 
     const { data: membri } = await supabase
       .from("cantiere_membri")
@@ -102,8 +120,40 @@ export default function AttivitaPage() {
       const { data: cr } = await supabase.from("profili").select("email").eq("id", cant.creato_da).maybeSingle();
       lista.push({ id: cant.creato_da, email: cr?.email ?? "(creatore del cantiere)" });
     }
-    setPersone(lista);
 
+    setPuoCreare(puo === true);
+    setRighe((elenco || []) as Riga[]);
+    setPersone(lista);
+    setDatiVecchi(null);
+    await salvaCache(`attivita:${cantiereId}`, { puo: puo === true, righe: elenco || [], persone: lista, uid });
+    return true;
+  }
+
+  async function carica() {
+    setCaricamento(true);
+    const u = await utenteLocale();
+    setMioId(u?.id ?? null);
+
+    let fatto = false;
+    if (!inOffline()) {
+      try {
+        fatto = await caricaDaRete(u?.id ?? null);
+      } catch {
+        fatto = false;
+      }
+    }
+    if (!fatto) {
+      const c = await leggiCache<any>(`attivita:${cantiereId}`);
+      if (c) {
+        setPuoCreare(c.valore.puo === true);
+        setRighe(c.valore.righe || []);
+        setPersone(c.valore.persone || []);
+        setDatiVecchi(c.aggiornato);
+      } else {
+        setErrore("Sei offline e questa pagina non è mai stata aperta con connessione su questo dispositivo.");
+      }
+    }
+    conteggioPrecedente.current = await aggiornaCoda();
     setCaricamento(false);
   }
 
@@ -111,29 +161,30 @@ export default function AttivitaPage() {
     if (cantiereId) carica();
   }, [cantiereId]);
 
+  // Quando una voce in coda viene inviata, ricarica l'elenco
+  useEffect(() => {
+    return iscriviCoda(async () => {
+      const prima = conteggioPrecedente.current;
+      const ora = await aggiornaCoda();
+      conteggioPrecedente.current = ora;
+      if (ora < prima && !inOffline()) carica();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cantiereId]);
+
   function emailDi(id: string | null): string {
     if (!id) return "nessuno";
     return persone.find((p) => p.id === id)?.email ?? "altro utente";
   }
 
-  // Restituisce una frase che dice com'è andato l'avviso (mai "avvisata" se non è vero).
-  async function avvisa(attivitaId: string, evento: "assegnata" | "chiusa"): Promise<string> {
-    try {
-      const { data: sessione } = await supabase.auth.getSession();
-      const token = sessione?.session?.access_token;
-      if (!token) return "L'avviso non è partito: sessione scaduta.";
-      const risposta = await fetch("/api/attivita/notifica", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ attivitaId, evento }),
-      });
-      const json = await risposta.json().catch(() => null);
-      if (!risposta.ok || !json?.ok) return `L'avviso non è partito (${json?.errore || "errore " + risposta.status}).`;
-      if (!json.avvisati) return `Nessun avviso inviato: ${json.motivo || "nessun destinatario"}.`;
-      if (json.erroreEmail) return `Avviso non inviato per email (${json.erroreEmail}).`;
-      return `Avviso inviato a ${json.destinatario}.`;
-    } catch {
-      return "L'avviso non è partito: controlla la connessione.";
+  async function dopoSalvataggio(testoOk: string) {
+    conteggioPrecedente.current = await aggiornaCoda();
+    if (inOffline()) {
+      setMessaggio("Salvato sul dispositivo. Verrà inviato da solo appena torna la connessione.");
+    } else {
+      setMessaggio(testoOk);
+      await eseguiSincronizzazione();
+      await carica();
     }
   }
 
@@ -145,36 +196,40 @@ export default function AttivitaPage() {
       setErrore("Scrivi un titolo.");
       return;
     }
-    if (!mioId) return;
-    setSalvataggio(true);
-    const { data, error } = await supabase
-      .from("attivita_cantiere")
-      .insert({
-        cantiere_id: cantiereId,
-        tipo,
-        titolo: titolo.trim(),
-        descrizione: descrizione.trim() || null,
-        gravita: tipo === "non_conformita" ? gravita : null,
-        assegnata_a: assegnataA || null,
-        scadenza: scadenza || null,
-        creato_da: mioId,
-      })
-      .select("id")
-      .single();
-    setSalvataggio(false);
-    if (error || !data) {
-      setErrore(error?.message || "Non è stato possibile salvare.");
+    if (!mioId) {
+      setErrore("Utente non riconosciuto: accedi di nuovo con connessione.");
       return;
     }
-    let esitoAvviso = "";
-    if (assegnataA && assegnataA !== mioId) esitoAvviso = await avvisa(data.id, "assegnata");
+    setSalvataggio(true);
+    try {
+      await accoda({
+        id: nuovoId(),
+        tipo: "attivita_nuova",
+        cantiereId,
+        etichetta: titolo.trim(),
+        payload: {
+          tipo,
+          titolo: titolo.trim(),
+          descrizione: descrizione.trim() || null,
+          gravita: tipo === "non_conformita" ? gravita : null,
+          assegnata_a: assegnataA || null,
+          scadenza: scadenza || null,
+          creato_da: mioId,
+        },
+      });
+    } catch {
+      setErrore("Impossibile salvare sul dispositivo (spazio esaurito o browser in modalità privata).");
+      setSalvataggio(false);
+      return;
+    }
+    setSalvataggio(false);
+    const avvisare = assegnataA && assegnataA !== mioId;
     setTitolo("");
     setDescrizione("");
     setScadenza("");
     setAssegnataA("");
     setMostraForm(false);
-    setMessaggio(esitoAvviso ? `Salvata. ${esitoAvviso}` : "Salvata.");
-    carica();
+    await dopoSalvataggio(avvisare ? "Salvata. La persona assegnata riceve l'avviso." : "Salvata.");
   }
 
   async function cambiaStato(r: Riga, nuovo: "aperta" | "in_corso" | "chiusa") {
@@ -186,28 +241,39 @@ export default function AttivitaPage() {
       if (risposta === null) return;
       nota = risposta.trim() || null;
     }
-    const { data, error } = await supabase
-      .from("attivita_cantiere")
-      .update({
-        stato: nuovo,
-        chiusa_il: nuovo === "chiusa" ? new Date().toISOString() : null,
-        nota_chiusura: nuovo === "chiusa" ? nota : null,
-      })
-      .eq("id", r.id)
-      .select("id");
-    if (error) {
-      setErrore(error.message);
+    try {
+      await accoda({
+        id: nuovoId(),
+        tipo: "attivita_stato",
+        cantiereId,
+        etichetta: `${nuovo === "chiusa" ? "Chiusura" : "Cambio stato"}: ${r.titolo}`,
+        payload: {
+          attivitaId: r.id,
+          stato: nuovo,
+          chiusa_il: nuovo === "chiusa" ? new Date().toISOString() : null,
+          nota_chiusura: nuovo === "chiusa" ? nota : null,
+        },
+      });
+    } catch {
+      setErrore("Impossibile salvare sul dispositivo.");
       return;
     }
-    if (!data || data.length === 0) {
-      setErrore("Non hai i permessi per modificare questa voce.");
-      return;
-    }
-    if (nuovo === "chiusa") setMessaggio(`Chiusa. ${await avvisa(r.id, "chiusa")}`);
-    carica();
+    await dopoSalvataggio(nuovo === "chiusa" ? "Chiusa. Chi l'ha assegnata riceve l'avviso." : "Aggiornata.");
   }
 
   async function elimina(r: Riga) {
+    // Voce creata offline e non ancora inviata: basta toglierla dalla coda
+    if (r._attesa && inCoda.some((o) => o.id === r.id && o.tipo === "attivita_nuova")) {
+      if (!window.confirm(`Scartare "${r.titolo}"? Non è ancora stata inviata.`)) return;
+      for (const o of inCoda) {
+        if (o.id === r.id || (o.tipo === "attivita_stato" && o.payload.attivitaId === r.id)) await rimuoviOperazione(o.id);
+      }
+      return;
+    }
+    if (inOffline()) {
+      setErrore("Per eliminare una voce serve la connessione.");
+      return;
+    }
     if (!window.confirm(`Eliminare "${r.titolo}"? L'operazione non si può annullare.`)) return;
     setErrore(null);
     const { data, error } = await supabase.from("attivita_cantiere").delete().eq("id", r.id).select("id");
@@ -222,15 +288,52 @@ export default function AttivitaPage() {
     carica();
   }
 
+  // Elenco mostrato: dati del server + cose create/modificate offline ancora da inviare
+  const righeEffettive: Riga[] = (() => {
+    const nuove: Riga[] = inCoda
+      .filter((o) => o.tipo === "attivita_nuova")
+      .map((o) => ({
+        id: o.id,
+        tipo: o.payload.tipo,
+        titolo: o.payload.titolo,
+        descrizione: o.payload.descrizione,
+        gravita: o.payload.gravita,
+        stato: "aperta" as const,
+        assegnata_a: o.payload.assegnata_a,
+        scadenza: o.payload.scadenza,
+        creato_da: o.payload.creato_da,
+        creato_il: new Date(o.creatoIl).toISOString(),
+        chiusa_il: null,
+        nota_chiusura: null,
+        _attesa: true,
+        _errore: o.stato === "errore" ? o.ultimoErrore || "errore" : undefined,
+      }));
+    const base: Riga[] = [...nuove, ...righe.filter((r) => !nuove.some((n) => n.id === r.id))];
+    for (const o of inCoda.filter((x) => x.tipo === "attivita_stato")) {
+      const k = base.findIndex((r) => r.id === o.payload.attivitaId);
+      if (k >= 0) {
+        base[k] = {
+          ...base[k],
+          stato: o.payload.stato,
+          chiusa_il: o.payload.chiusa_il,
+          nota_chiusura: o.payload.nota_chiusura,
+          _attesa: true,
+          _errore: o.stato === "errore" ? o.ultimoErrore || "errore" : base[k]._errore,
+        };
+      }
+    }
+    return base;
+  })();
+
   const oggi = oggiRoma();
-  const visibili = righe.filter((r) => {
+  const visibili = righeEffettive.filter((r) => {
     if (filtroStato === "aperte" && r.stato === "chiusa") return false;
     if (filtroStato === "chiuse" && r.stato !== "chiusa") return false;
     if (filtroTipo !== "tutti" && r.tipo !== filtroTipo) return false;
     return true;
   });
-  const nAperte = righe.filter((r) => r.stato !== "chiusa").length;
-  const nScadute = righe.filter((r) => r.stato !== "chiusa" && r.scadenza && r.scadenza < oggi).length;
+  const nAperte = righeEffettive.filter((r) => r.stato !== "chiusa").length;
+  const nScadute = righeEffettive.filter((r) => r.stato !== "chiusa" && r.scadenza && r.scadenza < oggi).length;
 
   if (caricamento) return <p style={{ padding: 24 }}>Caricamento...</p>;
 
@@ -342,6 +445,11 @@ export default function AttivitaPage() {
 
       {errore && <p style={{ color: "red" }}>{errore}</p>}
       {messaggio && <p style={{ color: "#16a34a" }}>{messaggio}</p>}
+      {datiVecchi && (
+        <p style={{ color: "#8a6d00", fontSize: 13 }}>
+          Dati salvati sul dispositivo il {new Date(datiVecchi).toLocaleString("it-IT")}.
+        </p>
+      )}
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
         <select value={filtroStato} onChange={(e) => setFiltroStato(e.target.value as any)} style={{ padding: 6 }}>
@@ -395,6 +503,30 @@ export default function AttivitaPage() {
                 {r.chiusa_il && <> · Chiusa il {formatData(r.chiusa_il)}</>}
               </div>
               {r.nota_chiusura && <div style={{ fontSize: 13, color: "#444", marginTop: 4 }}>Nota di chiusura: {r.nota_chiusura}</div>}
+              {r._attesa && (
+                <div style={{ fontSize: 12, marginTop: 6, color: r._errore ? "#c0392b" : "#8a6d00" }}>
+                  {r._errore ? `⚠ Non inviata: ${r._errore}` : "⏳ In attesa di invio"}
+                  {r._errore && (
+                    <>
+                      <button
+                        style={{ ...stilePulsante, marginLeft: 10 }}
+                        onClick={() => inCoda.filter((o) => o.stato === "errore" && (o.id === r.id || o.payload.attivitaId === r.id)).forEach((o) => riprovaOperazione(o.id))}
+                      >
+                        Riprova
+                      </button>
+                      <button
+                        style={{ ...stilePulsante, marginLeft: 6, color: "#c0392b" }}
+                        onClick={async () => {
+                          if (!window.confirm("Scartare la modifica non inviata?")) return;
+                          for (const o of inCoda.filter((x) => x.stato === "errore" && (x.id === r.id || x.payload.attivitaId === r.id))) await rimuoviOperazione(o.id);
+                        }}
+                      >
+                        Scarta
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
               <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {r.stato === "aperta" && (
                   <button style={stilePulsante} onClick={() => cambiaStato(r, "in_corso")}>
