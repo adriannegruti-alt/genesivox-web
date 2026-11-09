@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import StatoConnessione from "@/app/StatoConnessione";
 
 type Cantiere = { id: string; nome: string };
 
@@ -252,15 +253,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               Accessi ai dati
             </Link>
           )}
-          {!autoritaControllo && (
-            <Link
-              href="/fascicolo"
-              onClick={() => setMenuAperto(null)}
-              style={stileLinkMenu(!!pathname?.startsWith("/fascicolo"))}
-            >
-              Fascicolo
-            </Link>
-          )}
           {isAdmin && (
             <Link
               href="/admin"
@@ -310,6 +302,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           )}
         </div>
       </div>
+
+      <StatoConnessione />
 
       {/* Corpo: sidebar a tendina (se aperta) + contenuto */}
       <div className="shell-body" style={{ display: "flex" }}>
