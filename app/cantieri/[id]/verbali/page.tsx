@@ -1,8 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import {
+  accoda, elencaCoda, eErroreDiRete, eseguiSincronizzazione, inOffline, iscriviCoda, leggiCache,
+  nuovoId, riprovaOperazione, rimuoviOperazione, salvaCache, utenteLocale, type Operazione,
+} from "@/lib/codaOffline";
 
 type TipoVerbale = "sopralluogo" | "coordinamento_periodico" | "non_conformita" | "sospensione_lavori";
 
@@ -75,25 +79,38 @@ export default function VerbaliCsePage() {
   const [informatoAsl, setInformatoAsl] = useState(false);
   const [noteSospensione, setNoteSospensione] = useState("");
 
-  async function carica() {
-    setCaricamento(true);
+  const [inCoda, setInCoda] = useState<Operazione[]>([]);
+  const [datiVecchi, setDatiVecchi] = useState<number | null>(null);
+  const [messaggio, setMessaggio] = useState<string | null>(null);
+  const conteggioPrecedente = useRef(0);
 
-    const { data: userData } = await supabase.auth.getUser();
-    const uid = userData?.user?.id ?? null;
-    setMioId(uid);
+  async function aggiornaCoda(): Promise<number> {
+    const tutte = await elencaCoda(cantiereId);
+    const mie = tutte.filter((o) => o.tipo === "verbale_nuovo");
+    setInCoda(mie);
+    return mie.length;
+  }
 
-    const { data: cantiere } = await supabase.from("cantieri").select("nome").eq("id", cantiereId).maybeSingle();
-    setNomeCantiere(cantiere?.nome ?? "");
+  // Legge dal server. Restituisce false se non c'è rete (allora si usa la copia locale).
+  async function caricaDaRete(uid: string | null): Promise<boolean> {
+    const { data: cantiere, error: errCant } = await supabase.from("cantieri").select("nome").eq("id", cantiereId).maybeSingle();
+    if (errCant) {
+      if (eErroreDiRete(errCant)) return false;
+      setErrore(errCant.message);
+      return true;
+    }
 
+    let cse = false;
     if (uid) {
-      const { data: membro } = await supabase
+      const { data: membro, error: errMembro } = await supabase
         .from("cantiere_membri")
         .select("id, ruolo")
         .eq("cantiere_id", cantiereId)
         .eq("profilo_id", uid)
         .maybeSingle();
+      if (errMembro && eErroreDiRete(errMembro)) return false;
 
-      let cse = membro?.ruolo === "cse_csp";
+      cse = membro?.ruolo === "cse_csp";
       if (!cse && membro) {
         const { data: ruoliExtra } = await supabase
           .from("membro_ruoli")
@@ -101,16 +118,13 @@ export default function VerbaliCsePage() {
           .eq("membro_id", membro.id);
         cse = (ruoliExtra || []).some((r) => r.ruolo === "cse_csp");
       }
-      setPuoCompilare(cse);
     }
 
     const { data: membri } = await supabase
       .from("cantiere_membri")
       .select("id, profili!cantiere_membri_profilo_id_fkey(email)")
       .eq("cantiere_id", cantiereId);
-    setMembriCantiere(
-      (membri || []).map((m: any) => ({ id: m.id, email: m.profili?.email ?? "(email sconosciuta)" }))
-    );
+    const listaMembri = (membri || []).map((m: any) => ({ id: m.id, email: m.profili?.email ?? "(email sconosciuta)" }));
 
     const { data: elenco, error } = await supabase
       .from("verbali_cse")
@@ -118,18 +132,63 @@ export default function VerbaliCsePage() {
       .eq("cantiere_id", cantiereId)
       .order("data", { ascending: false })
       .order("creato_il", { ascending: false });
-
     if (error) {
+      if (eErroreDiRete(error)) return false;
       setErrore(error.message);
-    } else {
-      setVerbali(elenco || []);
+      return true;
     }
 
+    setNomeCantiere(cantiere?.nome ?? "");
+    setPuoCompilare(cse);
+    setMembriCantiere(listaMembri);
+    setVerbali(elenco || []);
+    setDatiVecchi(null);
+    await salvaCache(`verbali:${cantiereId}`, { nome: cantiere?.nome ?? "", cse, membri: listaMembri, verbali: elenco || [], uid });
+    return true;
+  }
+
+  async function carica() {
+    setCaricamento(true);
+    const u = await utenteLocale();
+    setMioId(u?.id ?? null);
+
+    let fatto = false;
+    if (!inOffline()) {
+      try {
+        fatto = await caricaDaRete(u?.id ?? null);
+      } catch {
+        fatto = false;
+      }
+    }
+    if (!fatto) {
+      const c = await leggiCache<any>(`verbali:${cantiereId}`);
+      if (c) {
+        setNomeCantiere(c.valore.nome || "");
+        setPuoCompilare(c.valore.cse === true);
+        setMembriCantiere(c.valore.membri || []);
+        setVerbali(c.valore.verbali || []);
+        setDatiVecchi(c.aggiornato);
+      } else {
+        setErrore("Sei offline e questa pagina non è mai stata aperta con connessione su questo dispositivo.");
+      }
+    }
+    conteggioPrecedente.current = await aggiornaCoda();
     setCaricamento(false);
   }
 
   useEffect(() => {
     if (cantiereId) carica();
+  }, [cantiereId]);
+
+  // Quando un verbale in coda viene inviato, ricarica l'elenco
+  useEffect(() => {
+    return iscriviCoda(async () => {
+      const prima = conteggioPrecedente.current;
+      const ora = await aggiornaCoda();
+      conteggioPrecedente.current = ora;
+      if (ora < prima && !inOffline()) carica();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cantiereId]);
 
   function resetCampi() {
@@ -200,6 +259,10 @@ export default function VerbaliCsePage() {
   }
 
   async function eliminaVerbale(id: string) {
+    if (inOffline()) {
+      setErrore("Per eliminare un verbale serve la connessione.");
+      return;
+    }
     if (!confirm("Eliminare questo verbale? L'operazione non è reversibile.")) return;
     setErrore(null);
 
@@ -258,6 +321,11 @@ export default function VerbaliCsePage() {
     }
 
     if (modificaId) {
+      if (inOffline()) {
+        setErrore("Per modificare un verbale già salvato serve la connessione. Puoi creare nuovi verbali anche offline.");
+        setSalvataggio(false);
+        return;
+      }
       const { data: aggiornato, error } = await supabase
         .from("verbali_cse")
         .update({
@@ -280,28 +348,33 @@ export default function VerbaliCsePage() {
         return;
       }
     } else {
-      const { data: inserito, error } = await supabase
-        .from("verbali_cse")
-        .insert({
-          cantiere_id: cantiereId,
-          tipo: tipoNuovo,
-          data,
-          ora: ora || null,
-          contenuto,
-          creato_da: mioId,
-          destinatario_membro_id: destinatario,
-        })
-        .select("id");
-
-      setSalvataggio(false);
-
-      if (error) {
-        setErrore(error.message);
+      try {
+        await accoda({
+          id: nuovoId(),
+          tipo: "verbale_nuovo",
+          cantiereId,
+          etichetta: `${etichettaTipo(tipoNuovo)} del ${data}`,
+          payload: {
+            tipo: tipoNuovo,
+            data,
+            ora: ora || null,
+            contenuto,
+            creato_da: mioId,
+            destinatario_membro_id: destinatario,
+          },
+        });
+      } catch {
+        setErrore("Impossibile salvare sul dispositivo (spazio esaurito o browser in modalità privata).");
+        setSalvataggio(false);
         return;
       }
-      if (!inserito || inserito.length === 0) {
-        setErrore("Non hai i permessi per creare un verbale in questo cantiere (solo il CSE/CSP assegnato può farlo).");
-        return;
+      setSalvataggio(false);
+      conteggioPrecedente.current = await aggiornaCoda();
+      if (inOffline()) {
+        setMessaggio("Verbale salvato sul dispositivo. Verrà inviato da solo appena torna la connessione.");
+      } else {
+        setMessaggio("Verbale salvato.");
+        await eseguiSincronizzazione();
       }
     }
 
@@ -543,8 +616,50 @@ export default function VerbaliCsePage() {
         </form>
       )}
 
+      {messaggio && <p style={{ color: "#16a34a" }}>{messaggio}</p>}
+      {datiVecchi && (
+        <p style={{ color: "#8a6d00", fontSize: 13 }}>
+          Dati salvati sul dispositivo il {new Date(datiVecchi).toLocaleString("it-IT")}.
+        </p>
+      )}
+
       <h3>Verbali registrati</h3>
-      {verbali.length === 0 && <p style={{ color: "#666" }}>Nessun verbale registrato per ora.</p>}
+      {inCoda.map((o) => (
+        <div
+          key={o.id}
+          style={{
+            border: "1px dashed " + (o.stato === "errore" ? "#e0a8a1" : "#e6c76a"),
+            background: o.stato === "errore" ? "#fdf3f2" : "#fffaf0",
+            borderRadius: 8,
+            padding: 12,
+            marginBottom: 10,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+            <strong>{etichettaTipo(o.payload.tipo)}</strong>
+            <span style={{ color: "#666", fontSize: 13 }}>
+              {o.payload.data} {o.payload.ora ? `— ${o.payload.ora}` : ""}
+            </span>
+          </div>
+          <div style={{ fontSize: 12, marginTop: 6, color: o.stato === "errore" ? "#c0392b" : "#8a6d00" }}>
+            {o.stato === "errore" ? `⚠ Non inviato: ${o.ultimoErrore || "errore"}` : "⏳ In attesa di invio"}
+            {o.stato === "errore" && (
+              <button style={{ marginLeft: 10, padding: "2px 8px" }} onClick={() => riprovaOperazione(o.id)}>
+                Riprova
+              </button>
+            )}
+            <button
+              style={{ marginLeft: 6, padding: "2px 8px", color: "#c0392b" }}
+              onClick={async () => {
+                if (window.confirm("Scartare questo verbale non ancora inviato? Non potrà essere recuperato.")) await rimuoviOperazione(o.id);
+              }}
+            >
+              Scarta
+            </button>
+          </div>
+        </div>
+      ))}
+      {verbali.length === 0 && inCoda.length === 0 && <p style={{ color: "#666" }}>Nessun verbale registrato per ora.</p>}
       {verbali.map((v) => (
         <div key={v.id} style={{ border: "1px solid #eee", borderRadius: 8, padding: 12, marginBottom: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
